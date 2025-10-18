@@ -51,6 +51,7 @@ export default function LoginScreen() {
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       <View style={styles.content}>
         <Text style={[styles.title, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -126,6 +127,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 20,
   },
   title: {
     fontSize: 32,
