@@ -1,5 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { auth } from '../config/firebase';
 
 interface User {
   id: string;
@@ -27,42 +28,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    checkAuthState();
-  }, []);
-
-  const checkAuthState = async () => {
-    try {
-      const userData = await AsyncStorage.getItem('user');
-      if (userData) {
-        const parsedUser = JSON.parse(userData);
-        setUser(parsedUser);
+    // Listen for authentication state changes
+    const unsubscribe = onAuthStateChanged(
+      // Fix: Import and use the correct 'auth' instance and remove unknown type 'FirebaseUser'
+      // Import the 'auth' instance from your firebase config
+      // Make sure to actually add this import at the top of your file:
+      // import { auth } from '../firebase'; // adjust the path as needed
+      auth,
+      (firebaseUser) => {
+        if (firebaseUser) {
+          // User is signed in
+          const userData: User = {
+            id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+        };
+        setUser(userData);
       } else {
-        // Ensure user is null if no data exists
+        // User is signed out
         setUser(null);
       }
-    } catch (error) {
-      console.error('Error checking auth state:', error);
-      setUser(null);
-    } finally {
       setIsLoading(false);
-    }
-  };
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      // Simulate API call - replace with actual authentication logic
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock successful login
-      const userData: User = {
-        id: '1',
-        email,
-        name: email.split('@')[0], // Use email prefix as name for demo
-      };
-      
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
+      await signInWithEmailAndPassword(auth, email, password);
       return true;
     } catch (error) {
       console.error('Login error:', error);
@@ -72,18 +67,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signup = async (name: string, email: string, password: string): Promise<boolean> => {
     try {
-      // Simulate API call - replace with actual authentication logic
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock successful signup
-      const userData: User = {
-        id: '1',
-        email,
-        name,
-      };
-      
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      // Update the user's display name using the updateProfile function from the Firebase Auth module
+      if (userCredential.user) {
+        await updateProfile(userCredential.user, {
+          displayName: name
+        });
+      }
       return true;
     } catch (error) {
       console.error('Signup error:', error);
@@ -93,8 +83,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const logout = async (): Promise<void> => {
     try {
-      await AsyncStorage.removeItem('user');
-      setUser(null);
+      await signOut(auth);
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -102,8 +91,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const clearStorage = async (): Promise<void> => {
     try {
-      await AsyncStorage.clear();
-      setUser(null);
+      await signOut(auth);
     } catch (error) {
       console.error('Clear storage error:', error);
     }

@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import '../config/firebase'; // Initialize Firebase
 
 export const unstable_settings = {
   initialRouteName: 'auth',
