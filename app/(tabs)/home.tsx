@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
@@ -27,7 +28,9 @@ const samplePosts = [
     description: "Learn digital drawing techniques using Procreate and Adobe Illustrator. Master brush techniques, color theory, and create stunning illustrations. Perfect for beginners and intermediate artists looking to enhance their digital art skills.",
     image: require("@/assets/images/drawing.jpg"),
     category: "Art",
-    height: 220 // Taller card
+    height: 250, // Taller card
+    location: "Seattle, WA",
+    skills: ["Digital Art", "Illustration", "Procreate", "Adobe Illustrator", "Color Theory"]
   },
   {
     id: 2,
@@ -38,7 +41,9 @@ const samplePosts = [
     description: "Introduction to 3D printing technology, design principles, and practical applications. Learn to use CAD software, understand different materials, and troubleshoot common printing issues. Hands-on workshop included.",
     image: require("@/assets/images/3dprinting.jpg"),
     category: "Technology",
-    height: 200 // Medium card
+    height: 250, // Medium card
+    location: "Portland, OR",
+    skills: ["3D Printing", "CAD Design", "Fusion 360", "Material Science", "Prototyping"]
   },
   {
     id: 3,
@@ -49,7 +54,9 @@ const samplePosts = [
     description: "Master the fundamentals of acoustic guitar playing. Learn proper finger placement, basic chords, strumming patterns, and your first songs. Perfect for complete beginners. Guitar provided if needed.",
     image: require("@/assets/images/guitar.jpg"),
     category: "Music",
-    height: 240 // Tallest card
+    height: 250, // Tallest card
+    location: "San Francisco, CA",
+    skills: ["Guitar", "Music Theory", "Acoustic Guitar", "Chord Progressions", "Fingerpicking"]
   },
   {
     id: 4,
@@ -60,7 +67,9 @@ const samplePosts = [
     description: "Comprehensive guide to social media marketing across all platforms. Learn content creation, engagement strategies, analytics, and how to build a strong online presence for your brand or business.",
     image: require("@/assets/images/marketing.jpg"),
     category: "Marketing",
-    height: 210 // Medium-tall card
+    height: 250, // Medium-tall card
+    location: "Los Angeles, CA",
+    skills: ["Social Media Marketing", "Content Creation", "Analytics", "Brand Strategy", "Digital Marketing"]
   },
   {
     id: 5,
@@ -71,7 +80,9 @@ const samplePosts = [
     description: "Discover the beautiful art of origami. Learn traditional and modern folding techniques, create stunning paper sculptures, and understand the mathematical principles behind this ancient art form.",
     image: require("@/assets/images/origami.jpg"),
     category: "Craft",
-    height: 180 // Shorter card
+    height: 250, // Shorter card
+    location: "Vancouver, BC",
+    skills: ["Origami", "Paper Craft", "Geometric Design", "Traditional Arts", "Mathematical Art"]
   },
   {
     id: 6,
@@ -82,7 +93,9 @@ const samplePosts = [
     description: "Master portrait photography techniques including lighting, composition, and posing. Learn to use natural and studio lighting, work with different camera settings, and edit portraits professionally.",
     image: require("@/assets/images/photography.png"),
     category: "Photography",
-    height: 230 // Medium-tall card
+    height: 250, // Medium-tall card
+    location: "Austin, TX",
+    skills: ["Photography", "Portrait Photography", "Lighting", "Photo Editing", "Adobe Lightroom"]
   },
   {
     id: 7,
@@ -93,7 +106,9 @@ const samplePosts = [
     description: "Complete web development course covering HTML, CSS, JavaScript, React, and Node.js. Build real projects and learn industry best practices. Perfect for beginners starting their coding journey.",
     image: require("@/assets/images/programming.jpeg"),
     category: "Programming",
-    height: 250 // Tall card
+    height: 250, // Tall card
+    location: "New York, NY",
+    skills: ["Web Development", "JavaScript", "React", "Node.js", "HTML", "CSS"]
   },
   {
     id: 8,
@@ -104,7 +119,9 @@ const samplePosts = [
     description: "Learn essential cooking techniques, knife skills, and basic recipes. Master the fundamentals of cooking and build confidence in the kitchen. Great for beginners and food enthusiasts.",
     image: require("@/assets/images/culinary.jpeg"),
     category: "Culinary",
-    height: 190 // Medium card
+    height: 250, // Medium card
+    location: "Chicago, IL",
+    skills: ["Cooking", "Knife Skills", "Culinary Arts", "Recipe Development", "Kitchen Safety"]
   },
   {
     id: 9,
@@ -115,7 +132,9 @@ const samplePosts = [
     description: "Discover the benefits of yoga and meditation for physical and mental wellness. Learn basic poses, breathing techniques, and mindfulness practices for daily life.",
     image: require("@/assets/images/wellness.jpeg"),
     category: "Wellness",
-    height: 200 // Medium card
+    height: 250, // Medium card
+    location: "Denver, CO",
+    skills: ["Yoga", "Meditation", "Mindfulness", "Breathing Techniques", "Wellness"]
   },
   {
     id: 10,
@@ -126,7 +145,9 @@ const samplePosts = [
     description: "Learn conversational Spanish from scratch. Cover essential vocabulary, grammar, and pronunciation. Practice with real-world scenarios and build confidence in speaking.",
     image: require("@/assets/images/language.jpeg"),
     category: "Language",
-    height: 210 // Medium-tall card
+    height: 250, // Medium-tall card
+    location: "Miami, FL",
+    skills: ["Spanish", "Language Learning", "Conversational Spanish", "Grammar", "Pronunciation"]
   },
   {
     id: 11,
@@ -137,7 +158,9 @@ const samplePosts = [
     description: "Master the fundamentals of graphic design including typography, color theory, layout, and composition. Learn to use design software and create professional visuals.",
     image: require("@/assets/images/design.jpeg"),
     category: "Design",
-    height: 220 // Tall card
+    height: 250, // Tall card
+    location: "Boston, MA",
+    skills: ["Graphic Design", "Typography", "Color Theory", "Adobe Creative Suite", "Layout Design"]
   },
   {
     id: 12,
@@ -148,7 +171,9 @@ const samplePosts = [
     description: "Learn advanced Excel techniques for data analysis, visualization, and reporting. Master pivot tables, charts, formulas, and data manipulation for business insights.",
     image: require("@/assets/images/dataScience.jpeg"),
     category: "Data Science",
-    height: 195 // Medium card
+    height: 250, // Medium card
+    location: "Phoenix, AZ",
+    skills: ["Data Analysis", "Excel", "Data Visualization", "Pivot Tables", "Business Intelligence"]
   }
 ];
 
@@ -162,12 +187,24 @@ interface Post {
   image: any; // Changed from string to any for require() images
   category: string;
   height: number;
+  location: string;
+  skills: string[];
 }
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const userCredits = 150; // Sample user credits
+
+  // Filter posts based on search query
+  const filteredPosts = samplePosts.filter(post => 
+    post.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    post.topic.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    post.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    post.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    post.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   const renderPost = (post: Post) => (
     <TouchableOpacity
@@ -192,7 +229,10 @@ export default function HomeScreen() {
         <Text style={[styles.postName, { color: Colors[colorScheme ?? 'light'].text }]}>
           {post.name}
         </Text>
-        <Text style={[styles.postTopic, { color: Colors[colorScheme ?? 'light'].text }]}>
+        <Text 
+          style={[styles.postTopic, { color: Colors[colorScheme ?? 'light'].text }]}
+          numberOfLines={3}
+        >
           {post.topic}
         </Text>
         <Text style={[styles.postCategory, { color: '#FF69B4' }]}>
@@ -223,9 +263,24 @@ export default function HomeScreen() {
             </Text>
           </View>
         </View>
-        <Text style={[styles.subtitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-          Discover amazing skills to learn
-        </Text>
+      </View>
+
+      {/* Search Bar with Android buffer */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={[
+            styles.searchInput,
+            { 
+              backgroundColor: Colors[colorScheme ?? 'light'].background,
+              color: Colors[colorScheme ?? 'light'].text,
+              borderColor: Colors[colorScheme ?? 'light'].text
+            }
+          ]}
+          placeholder="Search skills, people, or locations..."
+          placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
       </View>
       
       <ScrollView 
@@ -233,7 +288,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.postsContainer}
         showsVerticalScrollIndicator={false}
       >
-        {samplePosts.map(renderPost)}
+        {filteredPosts.map(renderPost)}
       </ScrollView>
 
       {/* Post Detail Modal */}
@@ -277,6 +332,12 @@ export default function HomeScreen() {
                 {selectedPost.category}
               </Text>
               
+              <View style={styles.modalLocation}>
+                <Text style={[styles.modalLocationText, { color: Colors[colorScheme ?? 'light'].text }]}>
+                  📍 {selectedPost.location}
+                </Text>
+              </View>
+              
               <View style={styles.modalDetails}>
                 <Text style={[styles.modalCost, { color: Colors[colorScheme ?? 'light'].text }]}>
                   {selectedPost.cost} credits
@@ -284,6 +345,19 @@ export default function HomeScreen() {
                 <Text style={[styles.modalDuration, { color: Colors[colorScheme ?? 'light'].text }]}>
                   Duration: {selectedPost.duration}
                 </Text>
+              </View>
+
+              <View style={styles.modalSkills}>
+                <Text style={[styles.modalSkillsTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+                  Skills Covered:
+                </Text>
+                <View style={styles.skillsContainer}>
+                  {selectedPost.skills.map((skill, index) => (
+                    <View key={index} style={styles.skillTag}>
+                      <Text style={styles.skillText}>{skill}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
               
               <Text style={[styles.modalDescription, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -313,7 +387,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    paddingTop: 20,
+    paddingTop: 60,
     paddingBottom: 10,
   },
   headerTop: {
@@ -323,7 +397,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   title: {
-    fontSize: 28,
+    fontSize: 36,
     fontWeight: 'bold',
   },
   creditsContainer: {
@@ -339,6 +413,26 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     opacity: 0.7,
+  },
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 25,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    fontSize: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   scrollView: {
     flex: 1,
@@ -383,6 +477,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: 0, // Allow flex to work properly
     flexGrow: 1, // Allow content to grow
+    paddingBottom: 8, // Reduce bottom padding to fit more content
   },
   postName: {
     fontSize: 14,
@@ -390,16 +485,16 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   postTopic: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
     marginBottom: 4,
-    lineHeight: 18,
+    lineHeight: 16,
     flexShrink: 1, // Allow topic to shrink if needed
   },
   postCategory: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: 6,
     textTransform: 'uppercase',
   },
   postFooter: {
@@ -409,11 +504,11 @@ const styles = StyleSheet.create({
     marginTop: 'auto', // Push footer to bottom
   },
   postCost: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   postDuration: {
-    fontSize: 11,
+    fontSize: 10,
     opacity: 0.7,
   },
   modalContainer: {
@@ -469,6 +564,38 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textTransform: 'uppercase',
   },
+  modalLocation: {
+    marginBottom: 12,
+  },
+  modalLocationText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  modalSkills: {
+    marginBottom: 20,
+  },
+  modalSkillsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  skillsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  skillTag: {
+    backgroundColor: '#FFE4E1',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 4,
+  },
+  skillText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#FF69B4',
+  },
   modalDetails: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -495,7 +622,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF69B4',
   },
   enrollButtonText: {
-    color: 'white',
+    color: 'black',
     fontSize: 16,
     fontWeight: 'bold',
   },
