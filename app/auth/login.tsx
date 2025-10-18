@@ -103,8 +103,8 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <View style={styles.signupContainer}>
-            <Text style={[styles.signupText, { color: Colors[colorScheme ?? 'light'].text }]}>
-              Don't have an account?{' '}
+            <Text style={[styles.signupText, { color: Colors[colorScheme ?? 'light'].text }]}> 
+              Don&apos;t have an account?{' '}
             </Text>
             <TouchableOpacity onPress={navigateToSignup}>
               <Text style={[styles.signupLink, { color: Colors[colorScheme ?? 'light'].tint }]}>
