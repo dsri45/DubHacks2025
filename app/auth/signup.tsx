@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   signupButtonText: {
-    color: '#fff',
+    color: '#000000ff',
     fontSize: 16,
     fontWeight: '600',
   },
