@@ -43,8 +43,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          // Hide the profile tab button; keep the route available programmatically
-          tabBarButton: () => null,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
         }}
       />
       {/* Users route removed to keep tab bar clean */}

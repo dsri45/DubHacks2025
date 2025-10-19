@@ -268,7 +268,7 @@ export default function CoursesScreen() {
       }
 
       if (student.credits < request.skillCost) {
-        Alert.alert('Insufficient Credits', `Student only has ${student.credits} credits but needs ${request.skillCost} credits for this course.`);
+        Alert.alert('Insufficient Credits', 'Student only has ' + student.credits + ' credits but needs ' + request.skillCost + ' credits for this course.');
         return;
       }
 
@@ -276,10 +276,10 @@ export default function CoursesScreen() {
       await courseRequestService.approveRequest(request.id!);
       
       // Deduct credits from student
-      console.log(`Deducting ${request.skillCost} credits from student ${request.studentId}`);
-      console.log(`Student current credits: ${student.credits}`);
-      await usersService.updateUserCredits(request.studentId, -request.skillCost);
-      console.log(`Student credits after deduction: ${student.credits - request.skillCost}`);
+  console.log('Deducting ' + request.skillCost + ' credits from student ' + request.studentId);
+  console.log('Student current credits: ' + student.credits);
+  await usersService.updateUserCredits(request.studentId, -request.skillCost);
+  console.log('Student credits after deduction: ' + (student.credits - request.skillCost));
       
       // Ensure teacher exists in Firestore and add credits
       let teacher = await usersService.getUserById(request.teacherId);
@@ -306,12 +306,12 @@ export default function CoursesScreen() {
       }
       
       // Add credits to teacher
-      console.log(`Adding ${request.skillCost} credits to teacher ${request.teacherId}`);
+      console.log('Adding ' + request.skillCost + ' credits to teacher ' + request.teacherId);
       if (teacher) {
-        console.log(`Teacher current credits: ${teacher.credits}`);
+        console.log('Teacher current credits: ' + teacher.credits);
       }
       await usersService.updateUserCredits(request.teacherId, request.skillCost);
-      console.log(`Teacher credits after addition: ${teacher ? teacher.credits + request.skillCost : 'unknown'}`);
+      console.log('Teacher credits after addition: ' + (teacher ? teacher.credits + request.skillCost : 'unknown'));
       
       // Create a Skill object from the request data for enrollment
       const skillData = {
@@ -338,7 +338,7 @@ export default function CoursesScreen() {
         skillData as any
       );
       
-      Alert.alert('Success', `Request approved! ${request.skillCost} credits transferred from student to teacher.`);
+  Alert.alert('Success', 'Request approved! ' + request.skillCost + ' credits transferred from student to teacher.');
       // Real-time listeners will automatically update the UI
     } catch (error) {
       console.error('Error approving request:', error);
