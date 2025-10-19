@@ -372,24 +372,9 @@ export const usersService = {
       });
       
       console.log(`Successfully updated user ${userId} credits: ${currentCredits} -> ${newCredits} (change: ${creditChange})`);
-    } catch (error: any) {
-      console.error('Error updating user credits:', error);
-      console.error('Error details:', error?.message ?? error);
-      throw error;
-    }
-  }
-  ,
-
-  // Update user profile fields (create or merge)
-  async updateUserProfile(userId: string, data: Partial<User>): Promise<void> {
-    try {
-      const userRef = doc(db, 'users', userId);
-      await setDoc(userRef, {
-        ...data,
-        updatedAt: Timestamp.now(),
-      }, { merge: true });
     } catch (error) {
-      console.error('Error updating user profile:', error);
+      console.error('Error updating user credits:', error);
+      console.error('Error details:', error.message);
       throw error;
     }
   }
