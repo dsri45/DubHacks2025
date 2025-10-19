@@ -1,19 +1,18 @@
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Dimensions,
-  ScrollView,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 
@@ -186,10 +185,11 @@ const mockUsers: UserPin[] = [
 export default function SearchScreen() {
   const colorScheme = useColorScheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const searchTimeout = useRef<number | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserPin | null>(null);
   const [filteredUsers, setFilteredUsers] = useState<UserPin[]>(mockUsers);
   const [isAISearching, setIsAISearching] = useState(false);
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+  // Removed list view and AI search features
   const [region, setRegion] = useState({
     latitude: 20,
     longitude: 0,
@@ -200,112 +200,40 @@ export default function SearchScreen() {
   // Simple text search
   const handleTextSearch = (query: string) => {
     setSearchQuery(query);
-    
     if (!query.trim()) {
       setFilteredUsers(mockUsers);
       return;
     }
-
-    const lowercaseQuery = query.toLowerCase();
-    const filtered = mockUsers.filter(user => 
-      user.name.toLowerCase().includes(lowercaseQuery) ||
-      user.location.toLowerCase().includes(lowercaseQuery) ||
-      user.skills.some(skill => skill.toLowerCase().includes(lowercaseQuery)) ||
-      user.lookingFor.some(skill => skill.toLowerCase().includes(lowercaseQuery)) ||
-      user.bio.toLowerCase().includes(lowercaseQuery) ||
-      user.languages.some(lang => lang.toLowerCase().includes(lowercaseQuery))
-    );
-    
-    setFilteredUsers(filtered);
-  };
-
-  // AI-powered search using Gemini
-  const handleAISearch = async () => {
-    if (!searchQuery.trim()) {
-      Alert.alert('Empty Search', 'Please enter a search query');
-      return;
-    }
-
-    setIsAISearching(true);
-    
     try {
-      // Create a prompt for Gemini to analyze the user's intent
-      const prompt = `
-        Given this search query: "${searchQuery}"
-        
-        Analyze the user's intent and extract relevant skills, interests, or locations they might be looking for.
-        Return your response as a JSON object with these fields:
-        - skills: array of relevant skills mentioned
-        - locations: array of locations or regions mentioned
-        - languages: array of languages mentioned
-        - keywords: array of other relevant keywords
-        
-        Example response format:
-        {
-          "skills": ["programming", "web development"],
-          "locations": ["seattle", "usa"],
-          "languages": ["english"],
-          "keywords": ["beginner", "learn"]
-        }
-      `;
-
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{ text: prompt }]
-            }]
-          })
-        }
+      const lowercaseQuery = query.toLowerCase();
+      const filtered = mockUsers.filter(user => 
+        user.name.toLowerCase().includes(lowercaseQuery) ||
+        user.location.toLowerCase().includes(lowercaseQuery) ||
+        user.skills.some(skill => skill.toLowerCase().includes(lowercaseQuery)) ||
+        user.lookingFor.some(skill => skill.toLowerCase().includes(lowercaseQuery)) ||
+        user.bio.toLowerCase().includes(lowercaseQuery) ||
+        user.languages.some(lang => lang.toLowerCase().includes(lowercaseQuery))
       );
-
-      const data = await response.json();
-      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (aiResponse) {
-        // Parse AI response and filter users
-        try {
-          const parsedResponse = JSON.parse(aiResponse);
-          const filtered = mockUsers.filter(user => {
-            const matchesSkills = parsedResponse.skills?.some((skill: string) => 
-              user.skills.some(s => s.toLowerCase().includes(skill.toLowerCase())) ||
-              user.lookingFor.some(s => s.toLowerCase().includes(skill.toLowerCase()))
-            );
-            
-            const matchesLocation = parsedResponse.locations?.some((loc: string) => 
-              user.location.toLowerCase().includes(loc.toLowerCase())
-            );
-            
-            const matchesLanguage = parsedResponse.languages?.some((lang: string) => 
-              user.languages.some(l => l.toLowerCase().includes(lang.toLowerCase()))
-            );
-
-            return matchesSkills || matchesLocation || matchesLanguage;
-          });
-
-          setFilteredUsers(filtered.length > 0 ? filtered : mockUsers);
-          
-          if (filtered.length === 0) {
-            Alert.alert('No Results', 'No users found matching your AI search. Showing all users.');
-          }
-        } catch (parseError) {
-          console.error('Error parsing AI response:', parseError);
-          handleTextSearch(searchQuery);
-        }
+      // Defensive: never set to empty array, fallback to all users
+      const newFiltered = filtered.length > 0 ? filtered : mockUsers;
+      setFilteredUsers(newFiltered);
+      // If selectedUser is not in the new filtered list, reset it and region
+      if (!newFiltered.length || (selectedUser && !newFiltered.some(u => u.id === selectedUser.id))) {
+        setSelectedUser(null);
+        setRegion({
+          latitude: 20,
+          longitude: 0,
+          latitudeDelta: 100,
+          longitudeDelta: 100,
+        });
       }
-    } catch (error) {
-      console.error('AI search error:', error);
-      Alert.alert('Search Error', 'AI search failed. Using basic search instead.');
-      handleTextSearch(searchQuery);
-    } finally {
-      setIsAISearching(false);
+    } catch (err) {
+      console.error('Search crash:', err);
+      Alert.alert('Error', 'Something went wrong during search.');
     }
   };
+
+  // ...existing code...
 
   const handleMarkerPress = (user: UserPin) => {
     setSelectedUser(user);
@@ -322,7 +250,6 @@ export default function SearchScreen() {
       style={[styles.userCard, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}
       onPress={() => {
         setSelectedUser(item);
-        setViewMode('map');
         setRegion({
           latitude: item.latitude,
           longitude: item.longitude,
@@ -382,31 +309,17 @@ export default function SearchScreen() {
             placeholderTextColor={Colors[colorScheme ?? 'light'].text}
             value={searchQuery}
             onChangeText={handleTextSearch}
-            multiline
+            multiline={false}
+            blurOnSubmit={true}
+            returnKeyType="search"
+            onSubmitEditing={() => {
+              // run text search and dismiss keyboard when user presses Enter/Search
+              handleTextSearch(searchQuery);
+              Keyboard.dismiss();
+            }}
           />
           
-          <View style={styles.searchButtons}>
-            <TouchableOpacity
-              style={[styles.aiSearchButton, { backgroundColor: '#FF69B4' }]}
-              onPress={handleAISearch}
-              disabled={isAISearching}
-            >
-              {isAISearching ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.aiSearchButtonText}>🤖 AI Search</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.viewToggle, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}
-              onPress={() => setViewMode(viewMode === 'map' ? 'list' : 'map')}
-            >
-              <Text style={styles.viewToggleText}>
-                {viewMode === 'map' ? '📋 List' : '🗺️ Map'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          {/* Removed AI search and view toggle buttons */}
         </View>
 
         <Text style={[styles.resultsCount, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -415,36 +328,38 @@ export default function SearchScreen() {
       </View>
 
       {viewMode === 'map' ? (
-        <MapView
-          style={styles.map}
-          region={region}
-          onRegionChangeComplete={setRegion}
-          showsUserLocation={true}
-          showsMyLocationButton={true}
-          showsCompass={true}
-          showsScale={true}
-        >
-          {filteredUsers.map((user) => (
-            <Marker
-              key={user.id}
-              coordinate={{
-                latitude: user.latitude,
-                longitude: user.longitude,
-              }}
-              onPress={() => handleMarkerPress(user)}
-              pinColor={selectedUser?.id === user.id ? '#FF69B4' : '#0a7ea4'}
-            >
-              <View style={styles.markerContainer}>
-                <View style={[
-                  styles.markerCircle,
-                  { backgroundColor: selectedUser?.id === user.id ? '#FF69B4' : '#0a7ea4' }
-                ]}>
-                  <Text style={styles.markerText}>{user.name.charAt(0)}</Text>
+        <View style={styles.map}>
+          <MapView
+            style={styles.map}
+            region={region}
+            onRegionChangeComplete={setRegion}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
+            showsCompass={true}
+            showsScale={true}
+          >
+            {filteredUsers.map((user) => (
+              <Marker
+                key={user.id}
+                coordinate={{
+                  latitude: user.latitude,
+                  longitude: user.longitude,
+                }}
+                onPress={() => handleMarkerPress(user)}
+                pinColor={selectedUser?.id === user.id ? '#FF69B4' : '#0a7ea4'}
+              >
+                <View style={styles.markerContainer}>
+                  <View style={[
+                    styles.markerCircle,
+                    { backgroundColor: selectedUser?.id === user.id ? '#FF69B4' : '#0a7ea4' }
+                  ]}>
+                    <Text style={styles.markerText}>{user.name.charAt(0)}</Text>
+                  </View>
                 </View>
-              </View>
-            </Marker>
-          ))}
-        </MapView>
+              </Marker>
+            ))}
+          </MapView>
+        </View>
       ) : (
         <FlatList
           data={filteredUsers}
@@ -457,13 +372,13 @@ export default function SearchScreen() {
 
       {/* User Detail Modal */}
       <Modal
-        visible={selectedUser !== null}
+        visible={!!selectedUser && filteredUsers.some(u => u.id === selectedUser?.id)}
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setSelectedUser(null)}
       >
-        {selectedUser && (
-          <View style={[styles.modalContainer, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+        {selectedUser && filteredUsers.some(u => u.id === selectedUser.id) && (
+          <View style={[styles.modalContainer, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}> 
             <View style={styles.modalHeader}>
               <TouchableOpacity
                 style={styles.closeButton}
@@ -474,7 +389,7 @@ export default function SearchScreen() {
             </View>
 
             <ScrollView style={styles.modalContent}>
-              <View style={[styles.modalAvatar, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}>
+              <View style={[styles.modalAvatar, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}> 
                 <Text style={styles.modalAvatarText}>{selectedUser.name.charAt(0)}</Text>
               </View>
 
@@ -491,7 +406,7 @@ export default function SearchScreen() {
               </Text>
 
               <View style={styles.modalSection}>
-                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}> 
                   Skills They Have
                 </Text>
                 <View style={styles.skillTags}>
@@ -504,7 +419,7 @@ export default function SearchScreen() {
               </View>
 
               <View style={styles.modalSection}>
-                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}> 
                   Looking to Learn
                 </Text>
                 <View style={styles.skillTags}>
@@ -517,19 +432,19 @@ export default function SearchScreen() {
               </View>
 
               <View style={styles.modalSection}>
-                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}> 
                   Languages
                 </Text>
-                <Text style={[styles.modalText, { color: Colors[colorScheme ?? 'light'].text }]}>
+                <Text style={[styles.modalText, { color: Colors[colorScheme ?? 'light'].text }]}> 
                   {selectedUser.languages.join(', ')}
                 </Text>
               </View>
 
               <View style={styles.modalSection}>
-                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}> 
                   Availability
                 </Text>
-                <Text style={[styles.modalText, { color: Colors[colorScheme ?? 'light'].text }]}>
+                <Text style={[styles.modalText, { color: Colors[colorScheme ?? 'light'].text }]}> 
                   {selectedUser.availability}
                 </Text>
               </View>

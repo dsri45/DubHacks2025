@@ -1,6 +1,9 @@
 declare module 'expo-image-picker' {
   export type MediaTypeOptions = 'all' | 'videos' | 'images';
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
   export type ImagePickerResult =
     | { cancelled: true }
     | { cancelled?: false; uri?: string; assets?: Array<{ uri: string; width?: number; height?: number; type?: string; }>; };
@@ -13,8 +16,17 @@ declare module 'expo-image-picker' {
     quality?: number;
   }): Promise<ImagePickerResult>;
 
+<<<<<<< Updated upstream
   export default {
     requestMediaLibraryPermissionsAsync,
     launchImageLibraryAsync,
   };
+=======
+  const _default: {
+    requestMediaLibraryPermissionsAsync: typeof requestMediaLibraryPermissionsAsync;
+    launchImageLibraryAsync: typeof launchImageLibraryAsync;
+  };
+
+  export default _default;
+>>>>>>> Stashed changes
 }
