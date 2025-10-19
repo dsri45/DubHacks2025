@@ -1,11 +1,13 @@
 import { createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
+import { usersService } from '../services/firebaseService';
 
 interface User {
   id: string;
   email: string;
   name: string;
+  credits?: number;
 }
 
 interface AuthContextType {
@@ -35,21 +37,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Make sure to actually add this import at the top of your file:
       // import { auth } from '../firebase'; // adjust the path as needed
       auth,
-      (firebaseUser) => {
+      async (firebaseUser) => {
         if (firebaseUser) {
-          // User is signed in
-          const userData: User = {
-            id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-        };
-        setUser(userData);
-      } else {
-        // User is signed out
-        setUser(null);
-      }
-      setIsLoading(false);
-    });
+          // User is signed in - try to load full user data from Firestore
+          try {
+            const userData = await usersService.getUserById(firebaseUser.uid);
+            if (userData) {
+              // User exists in Firestore, use that data
+              setUser({
+                id: userData.id!,
+                email: userData.email,
+                name: userData.name,
+                credits: userData.credits
+              });
+            } else {
+              // User doesn't exist in Firestore yet, create basic user data
+              const basicUserData: User = {
+                id: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                credits: 150 // Default starting credits
+              };
+              setUser(basicUserData);
+            }
+          } catch (error) {
+            console.error('Error loading user data:', error);
+            // Fallback to basic user data if Firestore fails
+            const basicUserData: User = {
+              id: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              credits: 150
+            };
+            setUser(basicUserData);
+          }
+        } else {
+          // User is signed out
+          setUser(null);
+        }
+        setIsLoading(false);
+      });
 
     // Cleanup subscription on unmount
     return () => unsubscribe();

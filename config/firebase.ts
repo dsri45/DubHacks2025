@@ -17,8 +17,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase Auth with AsyncStorage persistence for React Native
-// Use getAuth to avoid "already-initialized" error
+// Initialize Firebase Auth
 const auth = getAuth(app);
 
 // Initialize Firestore

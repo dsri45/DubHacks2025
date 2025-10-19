@@ -8,6 +8,7 @@ import {
     onSnapshot,
     orderBy,
     query,
+    setDoc,
     Timestamp,
     Unsubscribe,
     updateDoc,
@@ -190,13 +191,19 @@ export const skillsService = {
   // Real-time listener for all skills
   subscribeToAllSkills(callback: (skills: Skill[]) => void): Unsubscribe {
     const skillsRef = collection(db, 'skills');
-    const q = query(skillsRef, orderBy('createdAt', 'desc'));
     
-    return onSnapshot(q, (querySnapshot) => {
+    return onSnapshot(skillsRef, (querySnapshot) => {
       const skills = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Skill[];
+      
+      // Sort by createdAt on the client side
+      skills.sort((a, b) => {
+        const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : a.createdAt.toDate().getTime();
+        const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : b.createdAt.toDate().getTime();
+        return bTime - aTime; // Descending order (newest first)
+      });
       
       callback(skills);
     }, (error) => {
@@ -267,6 +274,22 @@ export const usersService = {
     }
   },
 
+  // Create user with specific ID (for Firebase Auth UID)
+  async createUserWithId(userId: string, user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
+    try {
+      const now = Timestamp.now();
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, {
+        ...user,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (error) {
+      console.error('Error creating user with ID:', error);
+      throw error;
+    }
+  },
+
   // Get all users
   async getAllUsers(): Promise<User[]> {
     try {
@@ -304,6 +327,56 @@ export const usersService = {
       console.error('Error getting user by email:', error);
       throw error;
     }
+  },
+
+  // Get user by ID
+  async getUserById(userId: string): Promise<User | null> {
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      
+      if (!userSnap.exists()) {
+        return null;
+      }
+
+      return {
+        id: userSnap.id,
+        ...userSnap.data()
+      } as User;
+    } catch (error) {
+      console.error('Error getting user by ID:', error);
+      throw error;
+    }
+  },
+
+  // Update user credits
+  async updateUserCredits(userId: string, creditChange: number): Promise<void> {
+    try {
+      console.log(`Starting credit update for user ${userId}, change: ${creditChange}`);
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      
+      if (!userSnap.exists()) {
+        console.error(`User ${userId} not found in Firestore`);
+        throw new Error('User not found');
+      }
+
+      const currentCredits = userSnap.data().credits || 0;
+      const newCredits = Math.max(0, currentCredits + creditChange); // Ensure credits don't go below 0
+      
+      console.log(`Updating credits: ${currentCredits} + ${creditChange} = ${newCredits}`);
+      
+      await updateDoc(userRef, {
+        credits: newCredits,
+        updatedAt: Timestamp.now()
+      });
+      
+      console.log(`Successfully updated user ${userId} credits: ${currentCredits} -> ${newCredits} (change: ${creditChange})`);
+    } catch (error) {
+      console.error('Error updating user credits:', error);
+      console.error('Error details:', error.message);
+      throw error;
+    }
   }
 };
 
@@ -311,60 +384,34 @@ export const usersService = {
 export const storageService = {
   // Upload image - React Native compatible method
   async uploadImage(imageUri: string, path: string): Promise<string> {
-    try {
-      console.log('Storage service: Starting upload for URI:', imageUri);
-      console.log('Storage service: Upload path:', path);
-      
-      const storageRef = ref(storage, path);
-      
-      // For React Native, convert the image URI to a blob
-      console.log('Storage service: Fetching image...');
-      const response = await fetch(imageUri);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-      }
-      
-      console.log('Storage service: Converting to blob...');
-      const blob = await response.blob();
-      console.log('Storage service: Blob size:', blob.size);
-      
-      // Upload the blob
-      console.log('Storage service: Uploading to Firebase...');
-      await uploadBytes(storageRef, blob);
-      
-      // Get download URL
-      console.log('Storage service: Getting download URL...');
-      const downloadURL = await getDownloadURL(storageRef);
-      console.log('Storage service: Upload successful, URL:', downloadURL);
-      
-      return downloadURL;
-    } catch (error) {
-      console.error('Storage service: Upload failed:', error);
-      throw error;
-    }
+    const storageRef = ref(storage, path);
+    
+    // For React Native, convert the image URI to a blob
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    
+    // Upload the blob
+    await uploadBytes(storageRef, blob);
+    
+    // Get download URL
+    const downloadURL = await getDownloadURL(storageRef);
+    return downloadURL;
   },
 
   // Alternative simple upload method
   async uploadImageSimple(imageUri: string, path: string): Promise<string> {
-    try {
-      console.log('Storage service (simple): Starting upload for URI:', imageUri);
-      const storageRef = ref(storage, path);
-      
-      // Convert image URI to blob for React Native
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      
-      // Upload the blob
-      await uploadBytes(storageRef, blob);
-      
-      // Get download URL
-      const downloadURL = await getDownloadURL(storageRef);
-      return downloadURL;
-    } catch (error) {
-      console.error('Storage service (simple): Upload failed:', error);
-      throw error;
-    }
+    const storageRef = ref(storage, path);
+    
+    // Convert image URI to blob for React Native
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    
+    // Upload the blob
+    await uploadBytes(storageRef, blob);
+    
+    // Get download URL
+    const downloadURL = await getDownloadURL(storageRef);
+    return downloadURL;
   }
 };
 

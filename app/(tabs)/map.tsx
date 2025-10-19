@@ -1,358 +1,28 @@
 import { Colors } from '@/constants/theme';
 
+import { useAuth } from '@/contexts/AuthContext';
+
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
-import {
-    Alert,
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-    Dimensions,
+import MapView, { Marker, Region } from 'react-native-maps';
 
-    Keyboard,
-
-    Modal,
-
-    ScrollView,
-
-    StyleSheet,
-
-    Text,
-
-    TextInput,
-
-    TouchableOpacity,
-
-    View
-} from 'react-native';
-
-import MapView, { Marker } from 'react-native-maps';
+import { courseRequestService, Skill, skillsService } from '../../services/firebaseService';
 
  
 
-const { width, height } = Dimensions.get('window');
+interface MapSkill extends Skill {
 
- 
+  latitude?: number | null;
 
-interface UserPin {
+  longitude?: number | null;
 
-  id: string;
-
-  name: string;
-
-  latitude: number;
-
-  longitude: number;
-
-  skills: string[];
-
-  lookingFor: string[];
-
-  bio: string;
-
-  location: string;
-
-  languages: string[];
-
-  availability: string;
+  postalCode?: string | null;
 
 }
-
- 
-
-// Sample user data across the world
-
-const mockUsers: UserPin[] = [
-
-  {
-
-    id: '1',
-
-    name: 'Sarah Chen',
-
-    latitude: 47.6062,
-
-    longitude: -122.3321,
-
-    skills: ['Digital Art', 'Illustration', 'Procreate'],
-
-    lookingFor: ['3D Modeling', 'Animation'],
-
-    bio: 'Digital artist passionate about illustration and design',
-
-    location: 'Seattle, WA',
-
-    languages: ['English', 'Mandarin'],
-
-    availability: 'Weekends',
-
-  },
-
-  {
-
-    id: '2',
-
-    name: 'Marcus Johnson',
-
-    latitude: 40.7128,
-
-    longitude: -74.006,
-
-    skills: ['3D Printing', 'CAD Design', 'Engineering'],
-
-    lookingFor: ['Electronics', 'Robotics'],
-
-    bio: 'Mechanical engineer and maker enthusiast',
-
-    location: 'New York, NY',
-
-    languages: ['English', 'Spanish'],
-
-    availability: 'Evenings',
-
-  },
-
-  {
-
-    id: '3',
-
-    name: 'Elena Rodriguez',
-
-    latitude: 51.5074,
-
-    longitude: -0.1278,
-
-    skills: ['Guitar', 'Music Theory', 'Composition'],
-
-    lookingFor: ['Piano', 'Music Production'],
-
-    bio: 'Professional musician and music teacher',
-
-    location: 'London, UK',
-
-    languages: ['English', 'Spanish', 'Portuguese'],
-
-    availability: 'Flexible',
-
-  },
-
-  {
-
-    id: '4',
-
-    name: 'David Kim',
-
-    latitude: 37.5665,
-
-    longitude: 126.978,
-
-    skills: ['Digital Marketing', 'SEO', 'Content Strategy'],
-
-    lookingFor: ['Video Editing', 'Graphic Design'],
-
-    bio: 'Marketing specialist with focus on social media',
-
-    location: 'Seoul, South Korea',
-
-    languages: ['Korean', 'English'],
-
-    availability: 'Weekdays',
-
-  },
-
-  {
-
-    id: '5',
-
-    name: 'Lisa Wang',
-
-    latitude: 31.2304,
-
-    longitude: 121.4737,
-
-    skills: ['Origami', 'Paper Crafts', 'Art History'],
-
-    lookingFor: ['Calligraphy', 'Traditional Arts'],
-
-    bio: 'Traditional arts enthusiast and teacher',
-
-    location: 'Shanghai, China',
-
-    languages: ['Mandarin', 'English'],
-
-    availability: 'Weekends',
-
-  },
-
-  {
-
-    id: '6',
-
-    name: 'Alex Thompson',
-
-    latitude: -33.8688,
-
-    longitude: 151.2093,
-
-    skills: ['Photography', 'Photo Editing', 'Lightroom'],
-
-    lookingFor: ['Videography', 'Drone Operation'],
-
-    bio: 'Professional photographer specializing in portraits',
-
-    location: 'Sydney, Australia',
-
-    languages: ['English'],
-
-    availability: 'Flexible',
-
-  },
-
-  {
-
-    id: '7',
-
-    name: 'Maria Santos',
-
-    latitude: -23.5505,
-
-    longitude: -46.6333,
-
-    skills: ['Web Development', 'React', 'Node.js'],
-
-    lookingFor: ['Mobile Development', 'UI/UX Design'],
-
-    bio: 'Full-stack developer passionate about clean code',
-
-    location: 'São Paulo, Brazil',
-
-    languages: ['Portuguese', 'English', 'Spanish'],
-
-    availability: 'Evenings',
-
-  },
-
-  {
-
-    id: '8',
-
-    name: 'James Wilson',
-
-    latitude: 34.0522,
-
-    longitude: -118.2437,
-
-    skills: ['Cooking', 'Baking', 'Recipe Development'],
-
-    lookingFor: ['Food Photography', 'Nutrition'],
-
-    bio: 'Chef and culinary instructor',
-
-    location: 'Los Angeles, CA',
-
-    languages: ['English', 'French'],
-
-    availability: 'Weekends',
-
-  },
-
-  {
-
-    id: '9',
-
-    name: 'Priya Patel',
-
-    latitude: 19.076,
-
-    longitude: 72.8777,
-
-    skills: ['Yoga', 'Meditation', 'Wellness Coaching'],
-
-    lookingFor: ['Nutrition', 'Fitness Training'],
-
-    bio: 'Certified yoga instructor and wellness advocate',
-
-    location: 'Mumbai, India',
-
-    languages: ['Hindi', 'English', 'Gujarati'],
-
-    availability: 'Mornings',
-
-  },
-
-  {
-
-    id: '10',
-
-    name: 'Carlos Rodriguez',
-
-    latitude: 40.4168,
-
-    longitude: -3.7038,
-
-    skills: ['Spanish Language', 'Language Teaching', 'Translation'],
-
-    lookingFor: ['English Teaching', 'French'],
-
-    bio: 'Language teacher with 10 years of experience',
-
-    location: 'Madrid, Spain',
-
-    languages: ['Spanish', 'English', 'Catalan'],
-
-    availability: 'Flexible',
-
-  },
-
-  {
-
-    id: '11',
-
-    name: 'Emma Davis',
-
-    latitude: 49.2827,
-
-    longitude: -123.1207,
-
-    skills: ['Graphic Design', 'Adobe Suite', 'Branding'],
-
-    lookingFor: ['Web Design', 'Motion Graphics'],
-
-    bio: 'Creative designer focused on brand identity',
-
-    location: 'Vancouver, Canada',
-
-    languages: ['English', 'French'],
-
-    availability: 'Weekdays',
-
-  },
-
-  {
-
-    id: '12',
-
-    name: 'Michael Chen',
-
-    latitude: 1.3521,
-
-    longitude: 103.8198,
-
-    skills: ['Data Analysis', 'Excel', 'Python'],
-
-    lookingFor: ['Machine Learning', 'SQL'],
-
-    bio: 'Data analyst working with business intelligence',
-
-    location: 'Singapore',
-
-    languages: ['English', 'Mandarin', 'Malay'],
-
-    availability: 'Evenings',
-
-  },
-
-];
 
  
 
@@ -360,39 +30,45 @@ export default function MapScreen() {
 
   const colorScheme = useColorScheme();
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const { user } = useAuth();
 
-  const [selectedUser, setSelectedUser] = useState<UserPin | null>(null);
+  const [skills, setSkills] = useState<MapSkill[]>([]);
 
-  const [filteredUsers, setFilteredUsers] = useState<UserPin[]>(mockUsers);
+  const [selectedSkill, setSelectedSkill] = useState<MapSkill | null>(null);
 
-  // Removed AI search and list view features
-
-  const [region, setRegion] = useState({
-
-    latitude: 20,
-
-    longitude: 0,
-
-    latitudeDelta: 100,
-
-    longitudeDelta: 100,
-
-  });
+  const [region, setRegion] = useState<Region>({ latitude: 20, longitude: 0, latitudeDelta: 100, longitudeDelta: 100 });
 
  
 
-  // Simple text search
+  useEffect(() => {
 
-  const handleTextSearch = (query: string) => {
+    const unsubscribe = skillsService.subscribeToAllSkills((data: any[]) => setSkills((data || []) as MapSkill[]));
 
-    setSearchQuery(query);
+    return () => unsubscribe && unsubscribe();
 
-   
+  }, []);
 
-    if (!query.trim()) {
+ 
 
-      setFilteredUsers(mockUsers);
+  const handleMarkerPress = (skill: MapSkill) => {
+
+    setSelectedSkill(skill);
+
+    if (typeof skill.latitude === 'number' && typeof skill.longitude === 'number') {
+
+      setRegion({ latitude: skill.latitude, longitude: skill.longitude, latitudeDelta: 10, longitudeDelta: 10 });
+
+    }
+
+  };
+
+ 
+
+  const handleRequestEnrollment = async () => {
+
+    if (!selectedSkill || !user) {
+
+      Alert.alert('Error', 'Please log in to request enrollment');
 
       return;
 
@@ -400,57 +76,61 @@ export default function MapScreen() {
 
  
 
-    const lowercaseQuery = query.toLowerCase();
+    Alert.alert(
 
-    const filtered = mockUsers.filter(user =>
+      'Request Enrollment',
 
-      user.name.toLowerCase().includes(lowercaseQuery) ||
+      `Send enrollment request for "${selectedSkill.topic}" to ${selectedSkill.userName}?`,
 
-      user.location.toLowerCase().includes(lowercaseQuery) ||
+      [
 
-      user.skills.some(skill => skill.toLowerCase().includes(lowercaseQuery)) ||
+        { text: 'Cancel', style: 'cancel' },
 
-      user.lookingFor.some(skill => skill.toLowerCase().includes(lowercaseQuery)) ||
+        {
 
-      user.bio.toLowerCase().includes(lowercaseQuery) ||
+          text: 'Send Request',
 
-      user.languages.some(lang => lang.toLowerCase().includes(lowercaseQuery))
+          onPress: async () => {
+
+            try {
+
+              // Create course request
+
+              await courseRequestService.createCourseRequest(
+
+                user.id,
+
+                user.name || user.email || 'Anonymous',
+
+                user.email || '',
+
+                selectedSkill,
+
+                `Hi! I'd like to enroll in your "${selectedSkill.topic}" course.`
+
+              );
+
+ 
+
+              setSelectedSkill(null);
+
+              Alert.alert('Success', 'Enrollment request sent! The teacher will review and approve your request.');
+
+            } catch (error: any) {
+
+              Alert.alert('Error', 'Failed to send request: ' + (error?.message || 'Unknown error'));
+
+            }
+
+          }
+
+        }
+
+      ]
 
     );
 
-   
-
-    setFilteredUsers(filtered);
-
   };
-
- 
-
-  // AI search removed - using only simple text search now
-
- 
-
-  const handleMarkerPress = (user: UserPin) => {
-
-    setSelectedUser(user);
-
-    setRegion({
-
-      latitude: user.latitude,
-
-      longitude: user.longitude,
-
-      latitudeDelta: 10,
-
-      longitudeDelta: 10,
-
-    });
-
-  };
-
- 
-
-  // List view removed; map-only rendering in use
 
  
 
@@ -460,169 +140,71 @@ export default function MapScreen() {
 
       <View style={styles.header}>
 
-        <Text style={[styles.title, { color: Colors[colorScheme ?? 'light'].text }]}>
+        <Text style={[styles.title, { color: Colors[colorScheme ?? 'light'].text }]}>Map</Text>
 
-          Find People
-
-        </Text>
-
-       
-
-        <View style={styles.searchContainer}>
-
-          <TextInput
-
-            style={[styles.searchInput, {
-
-              backgroundColor: Colors[colorScheme ?? 'light'].background,
-
-              color: Colors[colorScheme ?? 'light'].text,
-
-              borderColor: Colors[colorScheme ?? 'light'].text
-
-            }]}
-
-            placeholder="Search by skills, location, or describe what you're looking for..."
-
-            placeholderTextColor={Colors[colorScheme ?? 'light'].text}
-
-            value={searchQuery}
-
-            onChangeText={(text) => setSearchQuery(text)}
-
-            onSubmitEditing={() => {
-
-              handleTextSearch(searchQuery);
-
-              Keyboard.dismiss();
-
-            }}
-
-            returnKeyType="search"
-
-            blurOnSubmit={true}
-
-            multiline={false}
-
-          />
-
-         
-
-          {/* Controls removed: AI search & list toggle */}
-
-        </View>
-
- 
-
-        <Text style={[styles.resultsCount, { color: Colors[colorScheme ?? 'light'].text }]}>
-
-          {filteredUsers.length} people found
-
-        </Text>
+        <Text style={[styles.subtitle, { color: Colors[colorScheme ?? 'light'].text }]}>{skills.length} skills</Text>
 
       </View>
 
  
 
-      <View style={styles.map}>
+      <MapView style={styles.map} region={region} onRegionChangeComplete={(r) => setRegion(r)} showsUserLocation>
 
-        <MapView
+        {skills
 
-          style={styles.map}
+          .filter((s) => typeof s.latitude === 'number' && typeof s.longitude === 'number')
 
-          region={region}
+          .map((s) => (
 
-          onRegionChangeComplete={setRegion}
+            <Marker
 
-          showsUserLocation={true}
+              key={s.id}
 
-          showsMyLocationButton={true}
+              coordinate={{ latitude: s.latitude as number, longitude: s.longitude as number }}
 
-          showsCompass={true}
+              onPress={() => handleMarkerPress(s)}
 
-          showsScale={true}
+              pinColor={selectedSkill?.id === s.id ? '#FF69B4' : '#0a7ea4'}
 
-        >
+            >
 
-          {Array.isArray(filteredUsers) && filteredUsers.map((user) => {
+              <View style={styles.markerContainer}>
 
-            if (!user || typeof user.latitude !== 'number' || typeof user.longitude !== 'number') return null;
+                <View style={[
 
-            return (
+                  styles.markerCircle,
 
-              <Marker
+                  { backgroundColor: selectedSkill?.id === s.id ? '#FF69B4' : '#0a7ea4' }
 
-                key={user.id}
+                ]}>
 
-                coordinate={{
+                  <Text style={styles.markerText}>
 
-                  latitude: user.latitude,
+                    {s.userName?.charAt(0) || s.topic?.charAt(0) || '?'}
 
-                  longitude: user.longitude,
-
-                }}
-
-                onPress={() => handleMarkerPress(user)}
-
-                pinColor={selectedUser?.id === user.id ? '#FF69B4' : '#0a7ea4'}
-
-              >
-
-                <View style={styles.markerContainer}>
-
-                  <View style={[
-
-                    styles.markerCircle,
-
-                    { backgroundColor: selectedUser?.id === user.id ? '#FF69B4' : '#0a7ea4' }
-
-                  ]}>
-
-                    <Text style={styles.markerText}>{user.name.charAt(0)}</Text>
-
-                  </View>
+                  </Text>
 
                 </View>
 
-              </Marker>
+              </View>
 
-            );
+            </Marker>
 
-          })}
+          ))}
 
-        </MapView>
-
-      </View>
+      </MapView>
 
  
 
-      {/* User Detail Modal */}
+      <Modal visible={!!selectedSkill} onRequestClose={() => setSelectedSkill(null)} animationType="slide" presentationStyle="pageSheet">
 
-      <Modal
-
-        visible={selectedUser !== null}
-
-        animationType="slide"
-
-        presentationStyle="pageSheet"
-
-        onRequestClose={() => setSelectedUser(null)}
-
-      >
-
-        {selectedUser && (
+        {selectedSkill && (
 
           <View style={[styles.modalContainer, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
 
             <View style={styles.modalHeader}>
 
-              <TouchableOpacity
-
-                style={styles.closeButton}
-
-                onPress={() => setSelectedUser(null)}
-
-              >
+              <TouchableOpacity onPress={() => setSelectedSkill(null)} style={styles.closeButton}>
 
                 <Text style={styles.closeButtonText}>✕</Text>
 
@@ -630,13 +212,15 @@ export default function MapScreen() {
 
             </View>
 
- 
-
             <ScrollView style={styles.modalContent}>
 
               <View style={[styles.modalAvatar, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}>
 
-                <Text style={styles.modalAvatarText}>{selectedUser.name.charAt(0)}</Text>
+                <Text style={styles.modalAvatarText}>
+
+                  {selectedSkill.userName?.charAt(0) || selectedSkill.topic?.charAt(0) || '?'}
+
+                </Text>
 
               </View>
 
@@ -644,7 +228,15 @@ export default function MapScreen() {
 
               <Text style={[styles.modalName, { color: Colors[colorScheme ?? 'light'].text }]}>
 
-                {selectedUser.name}
+                {selectedSkill.userName || 'User'}
+
+              </Text>
+
+ 
+
+              <Text style={[styles.modalSkillTopic, { color: Colors[colorScheme ?? 'light'].text }]}>
+
+                Teaching: {selectedSkill.topic}
 
               </Text>
 
@@ -652,17 +244,21 @@ export default function MapScreen() {
 
               <Text style={[styles.modalLocation, { color: Colors[colorScheme ?? 'light'].text }]}>
 
-                📍 {selectedUser.location}
+                📍 {selectedSkill.location}
 
               </Text>
 
  
 
-              <Text style={[styles.modalBio, { color: Colors[colorScheme ?? 'light'].text }]}>
+              {selectedSkill.description && (
 
-                {selectedUser.bio}
+                <Text style={[styles.modalBio, { color: Colors[colorScheme ?? 'light'].text }]}>
 
-              </Text>
+                  {selectedSkill.description}
+
+                </Text>
+
+              )}
 
  
 
@@ -670,21 +266,51 @@ export default function MapScreen() {
 
                 <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
 
-                  Skills They Have
+                  Course Details
 
                 </Text>
 
-                <View style={styles.skillTags}>
+                <View style={styles.detailsCard}>
 
-                  {selectedUser.skills.map((skill, idx) => (
+                  <View style={styles.detailItem}>
 
-                    <View key={idx} style={styles.skillTag}>
+                    <Text style={styles.detailLabel}>Category:</Text>
 
-                      <Text style={styles.skillTagText}>{skill}</Text>
+                    <Text style={[styles.detailValue, { color: '#FF69B4' }]}>
+
+                      {selectedSkill.category}
+
+                    </Text>
+
+                  </View>
+
+                  <View style={styles.detailItem}>
+
+                    <Text style={styles.detailLabel}>Cost:</Text>
+
+                    <Text style={styles.detailValue}>{selectedSkill.cost} credits</Text>
+
+                  </View>
+
+                  <View style={styles.detailItem}>
+
+                    <Text style={styles.detailLabel}>Duration:</Text>
+
+                    <Text style={styles.detailValue}>{selectedSkill.duration}</Text>
+
+                  </View>
+
+                  {!!selectedSkill.postalCode && (
+
+                    <View style={styles.detailItem}>
+
+                      <Text style={styles.detailLabel}>Postal Code:</Text>
+
+                      <Text style={styles.detailValue}>{selectedSkill.postalCode}</Text>
 
                     </View>
 
-                  ))}
+                  )}
 
                 </View>
 
@@ -692,65 +318,33 @@ export default function MapScreen() {
 
  
 
-              <View style={styles.modalSection}>
+              {selectedSkill.skills && selectedSkill.skills.length > 0 && (
 
-                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+                <View style={styles.modalSection}>
 
-                  Looking to Learn
+                  <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
 
-                </Text>
+                    Skills Covered
 
-                <View style={styles.skillTags}>
+                  </Text>
 
-                  {selectedUser.lookingFor.map((skill, idx) => (
+                  <View style={styles.skillTags}>
 
-                    <View key={idx} style={[styles.skillTag, styles.wantTag]}>
+                    {selectedSkill.skills.map((skill, idx) => (
 
-                      <Text style={styles.skillTagText}>{skill}</Text>
+                      <View key={idx} style={styles.skillTag}>
 
-                    </View>
+                        <Text style={styles.skillTagText}>{skill}</Text>
 
-                  ))}
+                      </View>
+
+                    ))}
+
+                  </View>
 
                 </View>
 
-              </View>
-
- 
-
-              <View style={styles.modalSection}>
-
-                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-
-                  Languages
-
-                </Text>
-
-                <Text style={[styles.modalText, { color: Colors[colorScheme ?? 'light'].text }]}>
-
-                  {selectedUser.languages.join(', ')}
-
-                </Text>
-
-              </View>
-
- 
-
-              <View style={styles.modalSection}>
-
-                <Text style={[styles.modalSectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-
-                  Availability
-
-                </Text>
-
-                <Text style={[styles.modalText, { color: Colors[colorScheme ?? 'light'].text }]}>
-
-                  {selectedUser.availability}
-
-                </Text>
-
-              </View>
+              )}
 
  
 
@@ -758,33 +352,11 @@ export default function MapScreen() {
 
                 style={styles.connectButton}
 
-                onPress={() => {
-
-                  Alert.alert('Connect', `Send a connection request to ${selectedUser.name}?`, [
-
-                    { text: 'Cancel', style: 'cancel' },
-
-                    {
-
-                      text: 'Connect',
-
-                      onPress: () => {
-
-                        setSelectedUser(null);
-
-                        Alert.alert('Success', 'Connection request sent!');
-
-                      }
-
-                    }
-
-                  ]);
-
-                }}
+                onPress={handleRequestEnrollment}
 
               >
 
-                <Text style={styles.connectButtonText}>Connect 🤝</Text>
+                <Text style={styles.connectButtonText}>Request Enrollment 📚</Text>
 
               </TouchableOpacity>
 
@@ -806,67 +378,15 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
 
-  container: {
+  container: { flex: 1 },
 
-    flex: 1,
+  header: { padding: 16, paddingTop: 56 },
 
-  },
+  title: { fontSize: 28, fontWeight: 'bold' },
 
-  header: {
+  subtitle: { fontSize: 14, opacity: 0.7 },
 
-    padding: 20,
-
-    paddingTop: 60,
-
-    zIndex: 10,
-
-  },
-
-  title: {
-
-    fontSize: 28,
-
-    fontWeight: 'bold',
-
-    marginBottom: 16,
-
-  },
-
-  searchContainer: {
-
-    marginBottom: 12,
-
-  },
-
-  searchInput: {
-
-    borderWidth: 1,
-
-    borderRadius: 12,
-
-    padding: 12,
-
-    fontSize: 16,
-
-    marginBottom: 12,
-
-    minHeight: 50,
-
-  },
-
-  resultsCount: {
-
-    fontSize: 14,
-
-    opacity: 0.7,
-
-  },
-
-  map: {
-
-    flex: 1,
-
-  },
+  map: { flex: 1 },
 
   markerContainer: {
 
@@ -902,95 +422,7 @@ const styles = StyleSheet.create({
 
   },
 
-  /* list view styles removed */
-
-  userName: {
-
-    fontSize: 18,
-
-    fontWeight: 'bold',
-
-    marginBottom: 4,
-
-  },
-
-  userLocation: {
-
-    fontSize: 14,
-
-    opacity: 0.7,
-
-  },
-
-  skillsContainer: {
-
-    marginBottom: 12,
-
-  },
-
-  sectionLabel: {
-
-    fontSize: 14,
-
-    fontWeight: '600',
-
-    marginBottom: 8,
-
-  },
-
-  skillTags: {
-
-    flexDirection: 'row',
-
-    flexWrap: 'wrap',
-
-    gap: 8,
-
-  },
-
-  skillTag: {
-
-    backgroundColor: '#FF69B4',
-
-    paddingHorizontal: 12,
-
-    paddingVertical: 6,
-
-    borderRadius: 16,
-
-  },
-
-  wantTag: {
-
-    backgroundColor: '#0a7ea4',
-
-  },
-
-  skillTagText: {
-
-    color: 'white',
-
-    fontSize: 12,
-
-    fontWeight: '600',
-
-  },
-
-  userBio: {
-
-    fontSize: 14,
-
-    lineHeight: 20,
-
-    opacity: 0.8,
-
-  },
-
-  modalContainer: {
-
-    flex: 1,
-
-  },
+  modalContainer: { flex: 1 },
 
   modalHeader: {
 
@@ -1014,9 +446,9 @@ const styles = StyleSheet.create({
 
     backgroundColor: '#f0f0f0',
 
-    justifyContent: 'center',
-
     alignItems: 'center',
+
+    justifyContent: 'center'
 
   },
 
@@ -1034,7 +466,7 @@ const styles = StyleSheet.create({
 
     flex: 1,
 
-    paddingHorizontal: 20,
+    paddingHorizontal: 20
 
   },
 
@@ -1078,6 +510,20 @@ const styles = StyleSheet.create({
 
   },
 
+  modalSkillTopic: {
+
+    fontSize: 18,
+
+    fontWeight: '600',
+
+    textAlign: 'center',
+
+    marginBottom: 8,
+
+    color: '#FF69B4',
+
+  },
+
   modalLocation: {
 
     fontSize: 18,
@@ -1106,7 +552,7 @@ const styles = StyleSheet.create({
 
   modalSection: {
 
-    marginBottom: 24,
+    marginBottom: 24
 
   },
 
@@ -1120,11 +566,81 @@ const styles = StyleSheet.create({
 
   },
 
-  modalText: {
+  detailsCard: {
 
-    fontSize: 16,
+    backgroundColor: '#FFE4E1',
 
-    lineHeight: 24,
+    borderRadius: 12,
+
+    padding: 16,
+
+    borderWidth: 1,
+
+    borderColor: '#FFB6C1',
+
+    gap: 8,
+
+  },
+
+  detailItem: {
+
+    flexDirection: 'row',
+
+    alignItems: 'center',
+
+    gap: 8,
+
+  },
+
+  detailLabel: {
+
+    fontSize: 14,
+
+    fontWeight: '600',
+
+    color: '#666',
+
+  },
+
+  detailValue: {
+
+    fontSize: 14,
+
+    fontWeight: '500',
+
+    color: '#333',
+
+  },
+
+  skillTags: {
+
+    flexDirection: 'row',
+
+    flexWrap: 'wrap',
+
+    gap: 8,
+
+  },
+
+  skillTag: {
+
+    backgroundColor: '#FF69B4',
+
+    paddingHorizontal: 12,
+
+    paddingVertical: 6,
+
+    borderRadius: 16,
+
+  },
+
+  skillTagText: {
+
+    color: 'white',
+
+    fontSize: 12,
+
+    fontWeight: '600',
 
   },
 

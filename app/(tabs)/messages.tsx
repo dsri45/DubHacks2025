@@ -14,7 +14,9 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { CourseRequest, courseRequestService, Enrollment, enrollmentService, Message, messagesService } from '../../services/firebaseService';
+import { VideoCall } from '../../components/VideoCall';
+import { CourseRequest, courseRequestService, Enrollment, enrollmentService, Message, messagesService, usersService } from '../../services/firebaseService';
+import { translateToEnglish } from '../../services/translationService';
 
 // Remove CourseMessage interface - using Firebase Message instead
 
@@ -29,6 +31,15 @@ export default function CoursesScreen() {
   const [newMessage, setNewMessage] = useState('');
   const [courseMessages, setCourseMessages] = useState<Message[]>([]);
   const [activeTab, setActiveTab] = useState<'enrolled' | 'teaching' | 'requests'>('enrolled');
+  const [isVideoCallActive, setIsVideoCallActive] = useState(false);
+  
+  // Translation state
+  const [messageTranslations, setMessageTranslations] = useState<{[messageId: string]: {
+    translatedText: string;
+    detectedLanguage: string;
+    isTranslating: boolean;
+    showTranslation: boolean;
+  }}>({});
   
   // Store unsubscribe functions for cleanup
   const [unsubscribers, setUnsubscribers] = useState<(() => void)[]>([]);
@@ -227,7 +238,80 @@ export default function CoursesScreen() {
   // Handle course request approval
   const handleApproveRequest = async (request: CourseRequest) => {
     try {
+      // First, check if student has enough credits
+      let student = await usersService.getUserById(request.studentId);
+      if (!student) {
+        // Student doesn't exist in Firestore yet, create them with default credits
+        console.log('Student not found in Firestore, creating user with default credits');
+        try {
+          await usersService.createUserWithId(request.studentId, {
+            name: request.studentName,
+            email: request.studentEmail,
+            bio: '',
+            skillsHave: [],
+            skillsWant: [],
+            languages: ['English'],
+            location: '',
+            credits: 150, // Default starting credits
+            avatarUrl: ''
+          });
+          student = await usersService.getUserById(request.studentId);
+          if (!student) {
+            Alert.alert('Error', 'Failed to create student profile');
+            return;
+          }
+        } catch (error) {
+          console.error('Error creating student:', error);
+          Alert.alert('Error', 'Failed to create student profile');
+          return;
+        }
+      }
+
+      if (student.credits < request.skillCost) {
+        Alert.alert('Insufficient Credits', `Student only has ${student.credits} credits but needs ${request.skillCost} credits for this course.`);
+        return;
+      }
+
+      // Approve the request
       await courseRequestService.approveRequest(request.id!);
+      
+      // Deduct credits from student
+      console.log(`Deducting ${request.skillCost} credits from student ${request.studentId}`);
+      console.log(`Student current credits: ${student.credits}`);
+      await usersService.updateUserCredits(request.studentId, -request.skillCost);
+      console.log(`Student credits after deduction: ${student.credits - request.skillCost}`);
+      
+      // Ensure teacher exists in Firestore and add credits
+      let teacher = await usersService.getUserById(request.teacherId);
+      if (!teacher) {
+        // Teacher doesn't exist in Firestore yet, create them
+        console.log('Teacher not found in Firestore, creating user');
+        try {
+          await usersService.createUserWithId(request.teacherId, {
+            name: request.teacherName,
+            email: request.teacherEmail,
+            bio: '',
+            skillsHave: [],
+            skillsWant: [],
+            languages: ['English'],
+            location: '',
+            credits: 150, // Default starting credits
+            avatarUrl: ''
+          });
+          teacher = await usersService.getUserById(request.teacherId);
+        } catch (error) {
+          console.error('Error creating teacher:', error);
+          // Continue with credit update even if teacher creation fails
+        }
+      }
+      
+      // Add credits to teacher
+      console.log(`Adding ${request.skillCost} credits to teacher ${request.teacherId}`);
+      if (teacher) {
+        console.log(`Teacher current credits: ${teacher.credits}`);
+      }
+      await usersService.updateUserCredits(request.teacherId, request.skillCost);
+      console.log(`Teacher credits after addition: ${teacher ? teacher.credits + request.skillCost : 'unknown'}`);
       
       // Create a Skill object from the request data for enrollment
       const skillData = {
@@ -254,7 +338,7 @@ export default function CoursesScreen() {
         skillData as any
       );
       
-      Alert.alert('Success', 'Request approved and student enrolled!');
+      Alert.alert('Success', `Request approved! ${request.skillCost} credits transferred from student to teacher.`);
       // Real-time listeners will automatically update the UI
     } catch (error) {
       console.error('Error approving request:', error);
@@ -332,7 +416,7 @@ export default function CoursesScreen() {
         <View style={styles.courseInfo}>
           <Text style={[styles.courseTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
             {item.skillTopic}
-          </Text>
+            </Text>
           <Text style={[styles.teacherName, { color: Colors[colorScheme ?? 'light'].text }]}>
             by {item.teacherName}
           </Text>
@@ -365,6 +449,9 @@ export default function CoursesScreen() {
       ? message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : message.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    const translation = message.id ? messageTranslations[message.id] : undefined;
+    const displayText = translation?.showTranslation ? translation.translatedText : message.content;
+
     return (
     <View
       key={message.id}
@@ -377,16 +464,63 @@ export default function CoursesScreen() {
         styles.messageText,
           { color: isSentByUser ? 'white' : 'black' }
       ]}>
-        {message.content}
+          {displayText}
       </Text>
+        
+        {/* Translation info */}
+        {translation?.showTranslation && translation.detectedLanguage !== 'English' && (
+          <Text style={[
+            styles.translationInfo,
+            { color: isSentByUser ? 'rgba(255,255,255,0.7)' : '#888' }
+          ]}>
+            Translated from {translation.detectedLanguage}
+      </Text>
+        )}
+        
+        {/* Message actions */}
+        <View style={styles.messageActions}>
       <Text style={[
         styles.messageTime,
-          { color: isSentByUser ? 'rgba(255,255,255,0.7)' : Colors[colorScheme ?? 'light'].text }
-        ]}>
-          {timestamp}
-        </Text>
-      </View>
-    );
+            { color: isSentByUser ? 'rgba(255,255,255,0.8)' : '#666' }
+      ]}>
+            {timestamp}
+      </Text>
+          
+          {/* Translate button - only show for received messages */}
+          {!isSentByUser && (
+            <TouchableOpacity
+              style={styles.translateButton}
+              onPress={() => {
+                console.log('Translate button pressed for message:', message.id);
+                if (translation?.isTranslating || !message.id) {
+                  console.log('Translation blocked - already translating or no message ID');
+                  return;
+                }
+                if (translation?.translatedText) {
+                  console.log('Toggling translation display');
+                  toggleTranslation(message.id);
+                } else {
+                  console.log('Starting new translation');
+                  translateMessage(message.id, message.content);
+                }
+              }}
+              disabled={translation?.isTranslating}
+            >
+              {translation?.isTranslating ? (
+                <ActivityIndicator size="small" color="#4285f4" />
+              ) : (
+                <Text style={styles.translateButtonText}>
+                  {translation?.translatedText ? 
+                    (translation.showTranslation ? 'Show Original' : 'Translate') : 
+                    '🌐'
+                  }
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+    </View>
+  );
   };
 
   const handleSendMessage = async () => {
@@ -417,16 +551,75 @@ export default function CoursesScreen() {
   };
 
   const handleCallTeacher = () => {
+    if (!selectedCourse) return;
+    
     Alert.alert(
-      'Call Teacher',
-      `Call ${selectedCourse?.teacherName}?`,
+      'Video Call',
+      `Start video call with ${selectedCourse.teacherName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Call', onPress: () => {
-          Alert.alert('Coming Soon', 'Video calling feature will be available soon!');
-        }}
+        { 
+          text: 'Start Call', 
+          onPress: () => {
+            setIsVideoCallActive(true);
+          }
+        }
       ]
     );
+  };
+
+  const handleEndVideoCall = () => {
+    setIsVideoCallActive(false);
+  };
+
+  // Translation functions
+  const translateMessage = async (messageId: string, messageContent: string) => {
+    console.log('Starting translation for message:', messageId, messageContent);
+    
+    // Set translating state
+    setMessageTranslations(prev => ({
+      ...prev,
+      [messageId]: {
+        ...prev[messageId],
+        isTranslating: true
+      }
+    }));
+
+    try {
+      console.log('Calling translateToEnglish...');
+      const translationResult = await translateToEnglish(messageContent);
+      console.log('Translation result:', translationResult);
+      
+      setMessageTranslations(prev => ({
+        ...prev,
+        [messageId]: {
+          translatedText: translationResult.translatedText,
+          detectedLanguage: translationResult.detectedLanguage,
+          isTranslating: false,
+          showTranslation: true
+        }
+      }));
+      console.log('Translation state updated');
+    } catch (error) {
+      console.error('Translation error:', error);
+      setMessageTranslations(prev => ({
+        ...prev,
+        [messageId]: {
+          ...prev[messageId],
+          isTranslating: false
+        }
+      }));
+    }
+  };
+
+  const toggleTranslation = (messageId: string) => {
+    setMessageTranslations(prev => ({
+      ...prev,
+      [messageId]: {
+        ...prev[messageId],
+        showTranslation: !prev[messageId]?.showTranslation
+      }
+    }));
   };
 
   // Render teaching card (students enrolled in your courses)
@@ -435,63 +628,90 @@ export default function CoursesScreen() {
       style={[styles.courseCard, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}
       onPress={() => setSelectedCourse(item)}
     >
-      <View style={styles.courseHeader}>
-        <Text style={[styles.courseTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-          {item.skillTopic}
-        </Text>
-        <Text style={[styles.courseStatus, { color: '#4CAF50' }]}>
-          {item.status}
-        </Text>
-      </View>
-      
-      <Text style={[styles.studentInfo, { color: Colors[colorScheme ?? 'light'].text }]}>
-        Student: {item.studentName}
-      </Text>
-      
-      <Text style={[styles.courseDescription, { color: Colors[colorScheme ?? 'light'].text }]}>
-        {item.skillDescription}
-      </Text>
-      
-      <View style={styles.courseMeta}>
-        <Text style={[styles.courseCost, { color: '#FF69B4' }]}>
-          {item.skillCost} credits
-        </Text>
-        <Text style={[styles.courseDuration, { color: Colors[colorScheme ?? 'light'].text }]}>
-          {item.skillDuration}
-        </Text>
+      <View style={styles.courseCardContent}>
+        <View style={styles.courseImageContainer}>
+          {item.skillImageUrl ? (
+            <Image source={{ uri: item.skillImageUrl }} style={styles.courseImage} />
+          ) : (
+            <View style={[styles.courseImagePlaceholder, { backgroundColor: '#FFE4E1' }]}>
+              <Text style={styles.courseImageText}>📚</Text>
+            </View>
+          )}
+        </View>
+        
+        <View style={styles.courseInfo}>
+          <Text style={[styles.courseTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+            {item.skillTopic}
+          </Text>
+          <Text style={[styles.teacherName, { color: Colors[colorScheme ?? 'light'].text }]}>
+            Student: {item.studentName}
+          </Text>
+          <View style={styles.courseDetails}>
+            <Text style={[styles.courseDetail, { color: '#FF69B4' }]}>
+              {item.skillCost} credits
+            </Text>
+            <Text style={[styles.courseDetail, { color: Colors[colorScheme ?? 'light'].text }]}>
+              • {item.skillDuration}
+            </Text>
+          </View>
+          <View style={styles.statusContainer}>
+            <View style={[
+              styles.statusBadge, 
+              { backgroundColor: item.status === 'active' ? '#4CAF50' : '#FF9800' }
+            ]}>
+              <Text style={styles.statusText}>
+                {item.status === 'active' ? 'Teaching' : 'Completed'}
+              </Text>
+            </View>
+          </View>
+        </View>
       </View>
     </TouchableOpacity>
   );
 
   // Render request card (pending course requests)
   const renderRequestCard = ({ item }: { item: CourseRequest }) => (
-    <View style={[styles.requestCard, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
-      <View style={styles.requestHeader}>
-        <Text style={[styles.requestTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-          {item.skillTopic}
-        </Text>
-        <Text style={[styles.requestStatus, { color: '#FF9800' }]}>
-          {item.status}
-        </Text>
-      </View>
-      
-      <Text style={[styles.studentInfo, { color: Colors[colorScheme ?? 'light'].text }]}>
-        Request from: {item.studentName}
-      </Text>
-      
-      {item.message && (
-        <Text style={[styles.requestMessage, { color: Colors[colorScheme ?? 'light'].text }]}>
-          "{item.message}"
-        </Text>
-      )}
-      
-      <View style={styles.courseMeta}>
-        <Text style={[styles.courseCost, { color: '#FF69B4' }]}>
-          {item.skillCost} credits
-        </Text>
-        <Text style={[styles.courseDuration, { color: Colors[colorScheme ?? 'light'].text }]}>
-          {item.skillDuration}
-        </Text>
+    <View style={[styles.courseCard, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+      <View style={styles.courseCardContent}>
+        <View style={styles.courseImageContainer}>
+          {item.skillImageUrl ? (
+            <Image source={{ uri: item.skillImageUrl }} style={styles.courseImage} />
+          ) : (
+            <View style={[styles.courseImagePlaceholder, { backgroundColor: '#FFE4E1' }]}>
+              <Text style={styles.courseImageText}>📚</Text>
+            </View>
+          )}
+        </View>
+        
+        <View style={styles.courseInfo}>
+          <Text style={[styles.courseTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+            {item.skillTopic}
+          </Text>
+          <Text style={[styles.teacherName, { color: Colors[colorScheme ?? 'light'].text }]}>
+            Request from: {item.studentName}
+          </Text>
+          
+          {item.message && (
+            <Text style={[styles.courseDescription, { color: Colors[colorScheme ?? 'light'].text }]}>
+              "{item.message}"
+            </Text>
+          )}
+          
+          <View style={styles.courseDetails}>
+            <Text style={[styles.courseDetail, { color: '#FF69B4' }]}>
+              {item.skillCost} credits
+            </Text>
+            <Text style={[styles.courseDetail, { color: Colors[colorScheme ?? 'light'].text }]}>
+              • {item.skillDuration}
+            </Text>
+          </View>
+          
+          <View style={styles.statusContainer}>
+            <View style={[styles.statusBadge, { backgroundColor: '#FF9800' }]}>
+              <Text style={styles.statusText}>Pending</Text>
+            </View>
+          </View>
+        </View>
       </View>
       
       <View style={styles.requestActions}>
@@ -518,8 +738,20 @@ export default function CoursesScreen() {
         <ActivityIndicator size="large" color="#FF69B4" />
         <Text style={[styles.loadingText, { color: Colors[colorScheme ?? 'light'].text }]}>
           Loading your courses...
-        </Text>
-      </View>
+      </Text>
+    </View>
+  );
+  }
+
+  // Show video call if active
+  if (isVideoCallActive && selectedCourse && user) {
+    return (
+      <VideoCall
+        channelName={`course-${selectedCourse.id}`}
+        userId={parseInt(user.id.replace(/\D/g, '').slice(-6)) || Math.floor(Math.random() * 100000)}
+        onCallEnd={handleEndVideoCall}
+        isTeacher={selectedCourse.teacherId === user.id}
+      />
     );
   }
 
@@ -541,46 +773,35 @@ export default function CoursesScreen() {
           </View>
         </View>
 
-        {/* Course Info */}
+        {/* Course Info & Messages */}
         <ScrollView style={styles.courseInfoContainer} showsVerticalScrollIndicator={false}>
           <View style={styles.courseInfoCard}>
-            <Text style={[styles.courseInfoTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-              Course Details
-            </Text>
-            <Text style={[styles.courseInfoText, { color: Colors[colorScheme ?? 'light'].text }]}>
+            <Text style={[styles.courseInfoText, { color: '#333' }]}>
               {selectedCourse.skillDescription}
             </Text>
             
             <View style={styles.courseInfoRow}>
-              <Text style={[styles.courseInfoLabel, { color: Colors[colorScheme ?? 'light'].text }]}>
-                Duration: {selectedCourse.skillDuration}
-              </Text>
-              <Text style={[styles.courseInfoLabel, { color: Colors[colorScheme ?? 'light'].text }]}>
-                Cost: {selectedCourse.skillCost} credits
+              <Text style={[styles.courseInfoLabel, { color: '#666' }]}>
+                {selectedCourse.skillDuration} • {selectedCourse.skillCost} credits
               </Text>
             </View>
             
-            <View style={styles.skillsContainer}>
-              <Text style={[styles.skillsTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-                Skills Covered:
-              </Text>
-              <View style={styles.skillTags}>
-                {selectedCourse.skillSkills.map((skill, index) => (
-                  <View key={index} style={styles.skillTag}>
-                    <Text style={styles.skillTagText}>{skill}</Text>
-                  </View>
-                ))}
-              </View>
+            <View style={styles.skillTags}>
+              {selectedCourse.skillSkills.map((skill, index) => (
+                <View key={index} style={styles.skillTag}>
+                  <Text style={styles.skillTagText}>{skill}</Text>
+                </View>
+              ))}
           </View>
         </View>
 
         {/* Messages */}
           <View style={styles.messagesSection}>
-            <Text style={[styles.messagesTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+            <Text style={[styles.messagesTitle, { color: '#333' }]}>
               Messages
             </Text>
             {courseMessages.length === 0 ? (
-              <Text style={[styles.noMessagesText, { color: Colors[colorScheme ?? 'light'].text }]}>
+              <Text style={[styles.noMessagesText, { color: '#666' }]}>
                 No messages yet. Start a conversation with your teacher!
               </Text>
             ) : (
@@ -634,7 +855,7 @@ export default function CoursesScreen() {
           >
             <Text style={[styles.tabText, activeTab === 'enrolled' && styles.activeTabText]}>
               Enrolled ({enrollments.length})
-            </Text>
+        </Text>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -693,11 +914,11 @@ export default function CoursesScreen() {
             <View style={styles.centered}>
               <Text style={[styles.emptyText, { color: Colors[colorScheme ?? 'light'].text }]}>
                 No students enrolled in your courses yet.
-              </Text>
+        </Text>
               <Text style={[styles.emptySubtext, { color: Colors[colorScheme ?? 'light'].text }]}>
                 Students will appear here when they enroll in your skills.
-              </Text>
-            </View>
+        </Text>
+      </View>
           ) : (
             <FlatList
               data={teachingEnrollments}
@@ -720,12 +941,6 @@ export default function CoursesScreen() {
               <Text style={[styles.emptySubtext, { color: Colors[colorScheme ?? 'light'].text }]}>
                 Students will send requests to enroll in your courses.
               </Text>
-              <TouchableOpacity 
-                style={styles.testButton}
-                onPress={addTestRequest}
-              >
-                <Text style={styles.testButtonText}>Add Test Request (Debug)</Text>
-              </TouchableOpacity>
             </View>
           ) : (
             <FlatList
@@ -811,6 +1026,7 @@ const styles = StyleSheet.create({
   },
   courseCardContent: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   courseImageContainer: {
     marginRight: 16,
@@ -895,14 +1111,14 @@ const styles = StyleSheet.create({
   },
   courseInfoCard: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   courseInfoTitle: {
     fontSize: 18,
@@ -912,24 +1128,24 @@ const styles = StyleSheet.create({
   courseInfoText: {
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   courseInfoRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    justifyContent: 'flex-start',
+    marginBottom: 10,
   },
   courseInfoLabel: {
     fontSize: 12,
     fontWeight: '500',
   },
   skillsContainer: {
-    marginBottom: 16,
+    marginBottom: 8,
   },
   skillsTitle: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   skillTags: {
     flexDirection: 'row',
@@ -983,6 +1199,31 @@ const styles = StyleSheet.create({
   messageTime: {
     fontSize: 12,
     opacity: 0.7,
+  },
+  messageActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  translateButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(66, 133, 244, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(66, 133, 244, 0.3)',
+  },
+  translateButtonText: {
+    fontSize: 12,
+    color: '#4285f4',
+    fontWeight: '500',
+  },
+  translationInfo: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginTop: 4,
+    opacity: 0.8,
   },
   inputContainer: {
     flexDirection: 'row',
