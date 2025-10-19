@@ -38,6 +38,88 @@ export default function MapScreen() {
 
   const [region, setRegion] = useState<Region>({ latitude: 20, longitude: 0, latitudeDelta: 100, longitudeDelta: 100 });
 
+  // Hardcoded sample pins (visible without Firebase data)
+  const samplePins: MapSkill[] = [
+    {
+      id: 'sample-1',
+      userId: 'sample-1',
+      userName: 'Alice Johnson',
+      userEmail: 'alice@example.com',
+      topic: 'Guitar Basics',
+      description: 'Beginner-friendly guitar lessons focusing on chords and strumming.',
+      cost: 10,
+      duration: '1 hour',
+      category: 'Music',
+      skills: ['Guitar', 'Singing'],
+      location: 'Seattle, WA',
+      latitude: 47.6062,
+      longitude: -122.3321,
+      createdAt: ({} as any),
+      updatedAt: ({} as any),
+    },
+    {
+      id: 'sample-2',
+      userId: 'sample-2',
+      userName: 'Marco Rossi',
+      userEmail: 'marco@example.com',
+      topic: 'Italian Cooking',
+      description: 'Hands-on pasta making and sauce techniques.',
+      cost: 15,
+      duration: '2 hours',
+      category: 'Cooking',
+      skills: ['Cooking', 'Baking'],
+      location: 'San Francisco, CA',
+      latitude: 37.7749,
+      longitude: -122.4194,
+      createdAt: ({} as any),
+      updatedAt: ({} as any),
+    },
+    {
+      id: 'sample-3',
+      userId: 'sample-3',
+      userName: 'Sophia Lee',
+      userEmail: 'sophia@example.com',
+      topic: 'Intro to Python',
+      description: 'Learn Python fundamentals and small projects.',
+      cost: 12,
+      duration: '90 mins',
+      category: 'Programming',
+      skills: ['Python', 'Data Analysis'],
+      location: 'New York, NY',
+      latitude: 40.7128,
+      longitude: -74.0060,
+      createdAt: ({} as any),
+      updatedAt: ({} as any),
+    },
+    {
+      id: 'sample-4',
+      userId: 'sample-4',
+      userName: 'Daniel Kim',
+      userEmail: 'daniel@example.com',
+      topic: 'Photography Basics',
+      description: 'Composition, lighting, and phone-camera tips.',
+      cost: 8,
+      duration: '1.5 hours',
+      category: 'Photography',
+      skills: ['Photography', 'Editing'],
+      location: 'Austin, TX',
+      latitude: 30.2672,
+      longitude: -97.7431,
+      createdAt: ({} as any),
+      updatedAt: ({} as any),
+    }
+  ];
+
+  // If there are no real skills, center map on first sample pin so markers are visible
+  useEffect(() => {
+    if ((skills || []).length === 0 && samplePins.length > 0) {
+      const p = samplePins[0];
+      if (typeof p.latitude === 'number' && typeof p.longitude === 'number') {
+        setRegion({ latitude: p.latitude as number, longitude: p.longitude as number, latitudeDelta: 0.5, longitudeDelta: 0.5 });
+      }
+    }
+  }, [skills]);
+
  
 
   useEffect(() => {
@@ -170,6 +252,17 @@ export default function MapScreen() {
 
               <View style={styles.markerContainer}>
 
+          {/* Render hardcoded sample pins */}
+          {samplePins.map((s) => (
+            <Marker
+              key={s.id}
+              coordinate={{ latitude: s.latitude as number, longitude: s.longitude as number }}
+              onPress={() => handleMarkerPress(s)}
+              pinColor={selectedSkill?.id === s.id ? '#FF69B4' : '#0a7ea4'}
+              title={s.userName}
+              description={s.topic}
+            />
+          ))}
                 <View style={[
 
                   styles.markerCircle,
