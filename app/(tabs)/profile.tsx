@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Skill, skillsService, usersService } from '../../services/firebaseService';
+import { Skill, skillsService } from '../../services/firebaseService';
 
 export default function ProfileScreen() {
   const colorScheme = useColorScheme();
@@ -34,35 +34,6 @@ export default function ProfileScreen() {
     location: ''
   });
   const fileInputRef = useRef<any>(null);
-
-  // Friendly labels for editor modal
-  const fieldLabels: Record<string, string> = {
-    bio: 'Bio',
-    skillsHave: 'Skills I Have',
-    skillsWant: 'Skills I Want to Learn',
-    languages: 'Languages',
-  };
-
-  // Load profile fields from Firestore when user is available
-  useEffect(() => {
-    const loadProfile = async () => {
-      if (!user?.id) return;
-      try {
-        const u = await usersService.getUserById(user.id);
-        if (u) {
-          setBio(u.bio ?? '');
-          setSkillsHave((u.skillsHave && u.skillsHave.join(', ')) ?? '');
-          setSkillsWant((u.skillsWant && u.skillsWant.join(', ')) ?? '');
-          setLanguages((u.languages && u.languages.join(', ')) ?? '');
-          if (u.avatarUrl) setPhotoUri(u.avatarUrl);
-        }
-      } catch (e) {
-        console.error('Failed to load user profile from Firestore:', e);
-      }
-    };
-
-    loadProfile();
-  }, [user]);
 
   // Load user's skills
   useEffect(() => {
@@ -281,7 +252,7 @@ export default function ProfileScreen() {
               setEditorVisible(true);
             }}
           >
-            <Text style={[styles.editButtonText, styles.smallEditButtonText]}>Edit</Text>
+            <Text style={styles.editButtonText}>Edit</Text>
           </TouchableOpacity>
         </View>
         <Text style={[styles.sectionValue, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -300,7 +271,7 @@ export default function ProfileScreen() {
               setEditorVisible(true);
             }}
           >
-            <Text style={[styles.editButtonText, styles.smallEditButtonText]}>Edit</Text>
+            <Text style={styles.editButtonText}>Edit</Text>
           </TouchableOpacity>
         </View>
         <Text style={[styles.sectionValue, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -319,7 +290,7 @@ export default function ProfileScreen() {
               setEditorVisible(true);
             }}
           >
-            <Text style={[styles.editButtonText, styles.smallEditButtonText]}>Edit</Text>
+            <Text style={styles.editButtonText}>Edit</Text>
           </TouchableOpacity>
         </View>
         <Text style={[styles.sectionValue, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -338,7 +309,7 @@ export default function ProfileScreen() {
               setEditorVisible(true);
             }}
           >
-            <Text style={[styles.editButtonText, styles.smallEditButtonText]}>Edit</Text>
+            <Text style={styles.editButtonText}>Edit</Text>
           </TouchableOpacity>
         </View>
         <Text style={[styles.sectionValue, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -417,7 +388,7 @@ export default function ProfileScreen() {
       {/* Editor modal for sections */}
       <Modal visible={editorVisible} animationType="slide" onRequestClose={() => setEditorVisible(false)}>
         <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
-          <Text style={[styles.name, { color: Colors[colorScheme ?? 'light'].text }]}>{editorField ? `Edit ${fieldLabels[editorField] ?? editorField}` : 'Edit'}</Text>
+          <Text style={[styles.name, { color: Colors[colorScheme ?? 'light'].text }]}>{editorField ? `Edit ${editorField}` : 'Edit'}</Text>
           <TextInput
             style={[styles.editorInput, { color: Colors[colorScheme ?? 'light'].text }]}
             multiline
@@ -427,38 +398,13 @@ export default function ProfileScreen() {
             placeholderTextColor="#999"
           />
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}
-              onPress={async () => {
-                if (!user?.id) {
-                  Alert.alert('Error', 'No user logged in');
-                  return;
-                }
-
-                // Update local state
-                if (editorField === 'bio') setBio(editorValue);
-                if (editorField === 'skillsHave') setSkillsHave(editorValue);
-                if (editorField === 'skillsWant') setSkillsWant(editorValue);
-                if (editorField === 'languages') setLanguages(editorValue);
-
-                // Prepare data for Firestore
-                const updateData: any = {};
-                if (editorField === 'bio') updateData.bio = editorValue;
-                if (editorField === 'skillsHave') updateData.skillsHave = editorValue.split(',').map(s => s.trim()).filter(Boolean);
-                if (editorField === 'skillsWant') updateData.skillsWant = editorValue.split(',').map(s => s.trim()).filter(Boolean);
-                if (editorField === 'languages') updateData.languages = editorValue.split(',').map(s => s.trim()).filter(Boolean);
-
-                try {
-                  await usersService.updateUserProfile(user.id, updateData);
-                  Alert.alert('Saved', 'Profile updated');
-                } catch (e) {
-                  console.error('Failed to update profile:', e);
-                  Alert.alert('Error', 'Failed to save changes');
-                } finally {
-                  setEditorVisible(false);
-                }
-              }}
-            >
+            <TouchableOpacity style={styles.primaryButton} onPress={() => {
+              if (editorField === 'bio') setBio(editorValue);
+              if (editorField === 'skillsHave') setSkillsHave(editorValue);
+              if (editorField === 'skillsWant') setSkillsWant(editorValue);
+              if (editorField === 'languages') setLanguages(editorValue);
+              setEditorVisible(false);
+            }}>
               <Text style={styles.primaryButtonText}>Save</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryButton} onPress={() => setEditorVisible(false)}>
@@ -740,11 +686,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     backgroundColor: 'rgba(0, 123, 255, 0)',
-  },
-  smallEditButtonText: {
-    color: '#000',
-    fontSize: 12,
-    fontWeight: '600',
   },
   editorInput: {
     borderWidth: 1,
