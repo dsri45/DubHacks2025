@@ -1,10 +1,12 @@
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useRef, useState } from 'react';
-import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, FlatList, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Skill, skillsService } from '../../services/firebaseService';
 
 export default function ProfileScreen() {
   const colorScheme = useColorScheme();
@@ -18,7 +20,112 @@ export default function ProfileScreen() {
   const [skillsHave, setSkillsHave] = useState<string>('');
   const [skillsWant, setSkillsWant] = useState<string>('');
   const [languages, setLanguages] = useState<string>('');
+  const [userSkills, setUserSkills] = useState<Skill[]>([]);
+  const [loadingSkills, setLoadingSkills] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
+  const [editSkillModal, setEditSkillModal] = useState(false);
+  const [editSkillData, setEditSkillData] = useState({
+    topic: '',
+    description: '',
+    cost: '',
+    duration: '',
+    category: '',
+    skills: '',
+    location: ''
+  });
   const fileInputRef = useRef<any>(null);
+
+  // Load user's skills
+  useEffect(() => {
+    if (user) {
+      loadUserSkills();
+    }
+  }, [user]);
+
+  // Refresh skills when profile tab comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user) {
+        loadUserSkills();
+      }
+    }, [user])
+  );
+
+  const loadUserSkills = async () => {
+    if (!user) return;
+    
+    try {
+      setLoadingSkills(true);
+      const allSkills = await skillsService.getAllSkills();
+      const userSkillsData = allSkills.filter(skill => skill.userId === user.id);
+      setUserSkills(userSkillsData);
+    } catch (error) {
+      console.error('Error loading user skills:', error);
+    } finally {
+      setLoadingSkills(false);
+    }
+  };
+
+  const handleDeleteSkill = (skillId: string) => {
+    Alert.alert(
+      'Delete Skill',
+      'Are you sure you want to delete this skill?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await skillsService.deleteSkill(skillId);
+              await loadUserSkills();
+              Alert.alert('Success', 'Skill deleted successfully');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete skill');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEditSkill = (skill: Skill) => {
+    setEditingSkill(skill);
+    setEditSkillData({
+      topic: skill.topic,
+      description: skill.description,
+      cost: skill.cost.toString(),
+      duration: skill.duration,
+      category: skill.category,
+      skills: skill.skills.join(', '),
+      location: skill.location
+    });
+    setEditSkillModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingSkill || !user) return;
+
+    try {
+      const updatedSkillData = {
+        topic: editSkillData.topic,
+        description: editSkillData.description,
+        cost: parseInt(editSkillData.cost) || 0,
+        duration: editSkillData.duration,
+        category: editSkillData.category,
+        skills: editSkillData.skills.split(',').map(s => s.trim()).filter(s => s.length > 0),
+        location: editSkillData.location
+      };
+
+      await skillsService.updateSkill(editingSkill.id!, updatedSkillData);
+      await loadUserSkills();
+      setEditSkillModal(false);
+      setEditingSkill(null);
+      Alert.alert('Success', 'Skill updated successfully');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update skill');
+    }
+  };
 
   const handleEditProfile = () => {
     Alert.alert('Edit Profile', 'Edit profile functionality would go here');
@@ -210,6 +317,67 @@ export default function ProfileScreen() {
         </Text>
       </View>
 
+      {/* User's Skills Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+            My Skills
+          </Text>
+          <View style={styles.skillCountBadge}>
+            <Text style={styles.skillCountText}>{userSkills.length}</Text>
+          </View>
+        </View>
+        {loadingSkills ? (
+          <Text style={[styles.sectionValue, { color: Colors[colorScheme ?? 'light'].text }]}>
+            Loading your skills...
+          </Text>
+        ) : userSkills.length === 0 ? (
+          <Text style={[styles.sectionValue, { color: Colors[colorScheme ?? 'light'].text }]}>
+            You haven't posted any skills yet. Go to the home tab to add your first skill!
+          </Text>
+        ) : (
+          <FlatList
+            data={userSkills}
+            keyExtractor={(item) => item.id || `skill-${Math.random()}`}
+            renderItem={({ item }) => (
+              <TouchableOpacity 
+                style={styles.skillCard}
+                onPress={() => handleEditSkill(item)}
+                onLongPress={() => handleDeleteSkill(item.id!)}
+              >
+                <View style={styles.skillCardContent}>
+                  <Text style={styles.skillTitle}>
+                    {item.topic}
+                  </Text>
+                  <View style={styles.skillTags}>
+                    {item.skills.map((skill, index) => (
+                      <View key={index} style={styles.skillTag}>
+                        <Text style={styles.skillTagText}>{skill}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.skillActions}>
+                  <TouchableOpacity
+                    style={styles.actionIcon}
+                    onPress={() => handleEditSkill(item)}
+                  >
+                    <Text style={styles.actionIconText}>✏️</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.actionIcon}
+                    onPress={() => handleDeleteSkill(item.id!)}
+                  >
+                    <Text style={styles.actionIconText}>🗑️</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            )}
+            scrollEnabled={false}
+          />
+        )}
+      </View>
+
       <TouchableOpacity 
         style={[styles.menuItem, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}
         onPress={handleLogout}
@@ -245,6 +413,124 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Skill Modal */}
+      <Modal visible={editSkillModal} animationType="slide" onRequestClose={() => setEditSkillModal(false)}>
+        <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setEditSkillModal(false)}
+            >
+              <Text style={[styles.closeButtonText, { color: Colors[colorScheme ?? 'light'].tint }]}>
+                ✕
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.modalContent}>
+            <Text style={[styles.modalName, { color: Colors[colorScheme ?? 'light'].text }]}>
+              Edit Skill
+            </Text>
+            
+            <TextInput
+              style={[styles.addSkillInput, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Skill/Topic"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={editSkillData.topic}
+              onChangeText={(text) => setEditSkillData({...editSkillData, topic: text})}
+            />
+            
+            <TextInput
+              style={[styles.addSkillInput, styles.addSkillTextArea, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Description"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={editSkillData.description}
+              onChangeText={(text) => setEditSkillData({...editSkillData, description: text})}
+              multiline
+              numberOfLines={4}
+            />
+            
+            <View style={styles.addSkillRow}>
+              <TextInput
+                style={[styles.addSkillInput, styles.addSkillHalf, { 
+                  backgroundColor: Colors[colorScheme ?? 'light'].background,
+                  color: Colors[colorScheme ?? 'light'].text,
+                  borderColor: Colors[colorScheme ?? 'light'].text
+                }]}
+                placeholder="Cost (credits)"
+                placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+                value={editSkillData.cost}
+                onChangeText={(text) => setEditSkillData({...editSkillData, cost: text})}
+                keyboardType="numeric"
+              />
+              
+              <TextInput
+                style={[styles.addSkillInput, styles.addSkillHalf, { 
+                  backgroundColor: Colors[colorScheme ?? 'light'].background,
+                  color: Colors[colorScheme ?? 'light'].text,
+                  borderColor: Colors[colorScheme ?? 'light'].text
+                }]}
+                placeholder="Duration"
+                placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+                value={editSkillData.duration}
+                onChangeText={(text) => setEditSkillData({...editSkillData, duration: text})}
+              />
+            </View>
+            
+            <TextInput
+              style={[styles.addSkillInput, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Skills (comma-separated)"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={editSkillData.skills}
+              onChangeText={(text) => setEditSkillData({...editSkillData, skills: text})}
+            />
+
+            <TextInput
+              style={[styles.addSkillInput, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Location"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={editSkillData.location}
+              onChangeText={(text) => setEditSkillData({...editSkillData, location: text})}
+            />
+
+            <TextInput
+              style={[styles.addSkillInput, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Category"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={editSkillData.category}
+              onChangeText={(text) => setEditSkillData({...editSkillData, category: text})}
+            />
+            
+            <TouchableOpacity
+              style={[styles.enrollButton, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}
+              onPress={handleSaveEdit}
+            >
+              <Text style={styles.enrollButtonText}>Save Changes</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -253,6 +539,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
+    paddingTop: 60,
   },
   profileHeader: {
     alignItems: 'center',
@@ -281,7 +568,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 32,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
   sectionRow: {
     flexDirection: 'row',
@@ -290,8 +583,26 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2c3e50',
+    letterSpacing: 0.3,
+  },
+  skillCountBadge: {
+    backgroundColor: '#FF69B4',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    shadowColor: '#FF69B4',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  skillCountText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '700',
   },
   sectionValue: {
     fontSize: 14,
@@ -393,5 +704,132 @@ const styles = StyleSheet.create({
   menuText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  // User Skills Styles
+  skillCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#FFE4E1',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 12,
+    marginHorizontal: 4,
+    shadowColor: '#FF69B4',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  skillCardContent: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  skillTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 12,
+    color: '#2c3e50',
+    letterSpacing: 0.3,
+  },
+  skillTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  skillTag: {
+    backgroundColor: '#FF69B4',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    shadowColor: '#FF69B4',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  skillTagText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
+    letterSpacing: 0.2,
+  },
+  skillActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  actionIconText: {
+    fontSize: 16,
+  },
+  // Modal styles (reused from home)
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 20,
+    paddingBottom: 10,
+  },
+  closeButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  addSkillInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  addSkillTextArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  addSkillRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  addSkillHalf: {
+    flex: 1,
+  },
+  enrollButton: {
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 20,
+    backgroundColor: '#FF69B4',
+  },
+  enrollButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

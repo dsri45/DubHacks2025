@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access to skills collection for authenticated users
+    match /skills/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to users collection for authenticated users
+    match /users/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to messages collection for authenticated users
+    match /messages/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read access to all documents for authenticated users
+    // This is more permissive for development - you can tighten this later
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

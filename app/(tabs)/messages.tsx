@@ -1,217 +1,592 @@
 import { Colors } from '@/constants/theme';
+import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import React, { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image } from 'expo-image';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { CourseRequest, courseRequestService, Enrollment, enrollmentService, Message, messagesService } from '../../services/firebaseService';
 
-interface Message {
-  id: string;
-  sender: string;
-  content: string;
-  timestamp: string;
-  isRead: boolean;
-}
+// Remove CourseMessage interface - using Firebase Message instead
 
-interface Conversation {
-  id: string;
-  name: string;
-  lastMessage: string;
-  timestamp: string;
-  unreadCount: number;
-  avatar: string;
-}
-
-export default function MessagesScreen() {
+export default function CoursesScreen() {
   const colorScheme = useColorScheme();
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [teachingEnrollments, setTeachingEnrollments] = useState<Enrollment[]>([]);
+  const [courseRequests, setCourseRequests] = useState<CourseRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCourse, setSelectedCourse] = useState<Enrollment | null>(null);
   const [newMessage, setNewMessage] = useState('');
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const [conversations, setConversations] = useState<Conversation[]>([
-    {
-      id: '1',
-      name: 'Sarah Chen',
-      lastMessage: 'Thanks for the great drawing session!',
-      timestamp: '2m ago',
-      unreadCount: 0,
-      avatar: '🎨'
-    },
-    {
-      id: '2',
-      name: 'Marcus Johnson',
-      lastMessage: 'When is the next 3D printing workshop?',
-      timestamp: '1h ago',
-      unreadCount: 2,
-      avatar: '🖨️'
-    },
-    {
-      id: '3',
-      name: 'Elena Rodriguez',
-      lastMessage: 'The guitar lesson was amazing!',
-      timestamp: '3h ago',
-      unreadCount: 0,
-      avatar: '🎸'
-    },
-    {
-      id: '4',
-      name: 'David Kim',
-      lastMessage: 'Can we schedule a marketing consultation?',
-      timestamp: '1d ago',
-      unreadCount: 1,
-      avatar: '📱'
-    },
-    {
-      id: '5',
-      name: 'Lisa Wang',
-      lastMessage: 'The origami techniques were so helpful',
-      timestamp: '2d ago',
-      unreadCount: 0,
-      avatar: '📄'
-    },
-  ]);
+  const [courseMessages, setCourseMessages] = useState<Message[]>([]);
+  const [activeTab, setActiveTab] = useState<'enrolled' | 'teaching' | 'requests'>('enrolled');
+  
+  // Store unsubscribe functions for cleanup
+  const [unsubscribers, setUnsubscribers] = useState<(() => void)[]>([]);
+  const [unsubscribeMessages, setUnsubscribeMessages] = useState<(() => void) | null>(null);
 
-  // Mock messages per conversation (make stateful so we can append)
-  const [conversationMessages, setConversationMessages] = useState<Record<string, Message[]>>({
-    '1': [
-      { id: '1', sender: 'Sarah Chen', content: 'Loved the drawing tips today — thanks!', timestamp: '2m ago', isRead: true },
-      { id: '2', sender: 'You', content: 'Glad it helped! Want to practice together?', timestamp: '1m ago', isRead: true },
-    ],
-    '2': [
-      { id: '1', sender: 'Marcus Johnson', content: 'When is the next 3D printing workshop?', timestamp: '1h ago', isRead: false },
-      { id: '2', sender: 'You', content: 'Next Saturday at 10am — want me to save a spot?', timestamp: '55m ago', isRead: true },
-      { id: '3', sender: 'Marcus Johnson', content: 'Yes please, that would be great!', timestamp: '50m ago', isRead: false },
-    ],
-    '3': [
-      { id: '1', sender: 'Elena Rodriguez', content: 'The guitar lesson was amazing — thanks for the chord charts.', timestamp: '3h ago', isRead: true },
-    ],
-    '4': [
-      { id: '1', sender: 'David Kim', content: 'Can we schedule a marketing consultation next week?', timestamp: '1d ago', isRead: false },
-    ],
-    '5': [
-      { id: '1', sender: 'Lisa Wang', content: 'The origami techniques were so helpful. Any tips for beginners?', timestamp: '2d ago', isRead: true },
-    ],
-  });
+  // Manual loading functions (kept for debugging and fallback)
+  const loadEnrollments = async () => {
+    if (!user) return;
+    try {
+      const userEnrollments = await enrollmentService.getUserEnrollments(user.id);
+      setEnrollments(userEnrollments);
+    } catch (error) {
+      console.error('Error loading enrollments:', error);
+    }
+  };
 
-  const renderConversation = (conversation: Conversation) => (
+  const loadTeachingEnrollments = async () => {
+    if (!user) return;
+    try {
+      const teachingEnrollments = await enrollmentService.getTeacherEnrollments(user.id);
+      setTeachingEnrollments(teachingEnrollments);
+    } catch (error) {
+      console.error('Error loading teaching enrollments:', error);
+    }
+  };
+
+  const loadCourseRequests = async () => {
+    if (!user) return;
+    try {
+      const requests = await courseRequestService.getTeacherRequests(user.id);
+      setCourseRequests(requests);
+    } catch (error) {
+      console.error('Error loading course requests:', error);
+    }
+  };
+
+  // Set up real-time listeners when component mounts
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    console.log('Setting up real-time listeners for user:', user.id);
+    setLoading(true);
+
+    // Clean up existing listeners
+    unsubscribers.forEach(unsubscribe => unsubscribe());
+    setUnsubscribers([]);
+
+    const newUnsubscribers: (() => void)[] = [];
+
+    // Set up real-time listener for user enrollments
+    const unsubscribeEnrollments = enrollmentService.subscribeToUserEnrollments(
+      user.id,
+      (enrollments) => {
+        console.log('Real-time enrollments update:', enrollments);
+        setEnrollments(enrollments);
+        setLoading(false);
+      }
+    );
+    newUnsubscribers.push(unsubscribeEnrollments);
+
+    // Set up real-time listener for teaching enrollments
+    const unsubscribeTeaching = enrollmentService.subscribeToTeacherEnrollments(
+      user.id,
+      (enrollments) => {
+        console.log('Real-time teaching enrollments update:', enrollments);
+        setTeachingEnrollments(enrollments);
+      }
+    );
+    newUnsubscribers.push(unsubscribeTeaching);
+
+    // Set up real-time listener for course requests
+    const unsubscribeRequests = courseRequestService.subscribeToTeacherRequests(
+      user.id,
+      (requests) => {
+        console.log('Real-time course requests update:', requests);
+        setCourseRequests(requests);
+      }
+    );
+    newUnsubscribers.push(unsubscribeRequests);
+
+    setUnsubscribers(newUnsubscribers);
+
+    // Cleanup function
+    return () => {
+      newUnsubscribers.forEach(unsubscribe => unsubscribe());
+    };
+  }, [user]);
+
+  // Cleanup listeners when component unmounts
+  useEffect(() => {
+    return () => {
+      unsubscribers.forEach(unsubscribe => unsubscribe());
+      if (unsubscribeMessages) {
+        unsubscribeMessages();
+      }
+    };
+  }, [unsubscribers, unsubscribeMessages]);
+
+  // Set up real-time messaging when a course is selected
+  useEffect(() => {
+    if (!selectedCourse || !user) {
+      // Clean up existing message listener
+      if (unsubscribeMessages) {
+        unsubscribeMessages();
+        setUnsubscribeMessages(null);
+      }
+      setCourseMessages([]);
+      return;
+    }
+
+    console.log('Setting up real-time messages for course:', selectedCourse.id);
+    
+    // Clean up existing message listener
+    if (unsubscribeMessages) {
+      unsubscribeMessages();
+    }
+
+    // Set up real-time listener for course messages
+    const unsubscribe = messagesService.subscribeToCourseMessages(
+      selectedCourse.id!,
+      (messages) => {
+        console.log('Real-time messages update:', messages);
+        setCourseMessages(messages);
+      }
+    );
+
+    setUnsubscribeMessages(() => unsubscribe);
+
+    // Cleanup function
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [selectedCourse, user]);
+
+  // Add a test enrollment for debugging
+  const addTestEnrollment = async () => {
+    if (!user) return;
+    
+    try {
+      // Create a test enrollment
+      const testEnrollment = {
+        studentId: user.id,
+        studentName: user.name || user.email || 'Test User',
+        studentEmail: user.email || '',
+        teacherId: 'test-teacher-id',
+        teacherName: 'Test Teacher',
+        teacherEmail: 'teacher@test.com',
+        skillId: 'test-skill-id',
+        skillTopic: 'Test Course',
+        skillDescription: 'This is a test course for debugging',
+        skillCost: 10,
+        skillDuration: '1 hour',
+        skillCategory: 'Test',
+        skillImageUrl: '',
+        skillSkills: ['Testing', 'Debugging'],
+        skillLocation: 'Test Location',
+        status: 'active' as const,
+        enrolledAt: new Date(),
+      };
+
+      await enrollmentService.enrollInSkill(
+        testEnrollment.studentId,
+        testEnrollment.studentName,
+        testEnrollment.studentEmail,
+        {
+          id: testEnrollment.skillId,
+          userId: testEnrollment.teacherId,
+          userName: testEnrollment.teacherName,
+          userEmail: testEnrollment.teacherEmail,
+          topic: testEnrollment.skillTopic,
+          description: testEnrollment.skillDescription,
+          cost: testEnrollment.skillCost,
+          duration: testEnrollment.skillDuration,
+          category: testEnrollment.skillCategory,
+          imageUrl: testEnrollment.skillImageUrl,
+          skills: testEnrollment.skillSkills,
+          location: testEnrollment.skillLocation,
+          createdAt: new Date() as any,
+          updatedAt: new Date() as any,
+        } as any
+      );
+      
+      Alert.alert('Success', 'Test enrollment added!');
+      // Real-time listeners will automatically update the UI
+    } catch (error) {
+      console.error('Error adding test enrollment:', error);
+      Alert.alert('Error', 'Failed to add test enrollment: ' + (error as Error)?.message);
+    }
+  };
+
+  // Handle course request approval
+  const handleApproveRequest = async (request: CourseRequest) => {
+    try {
+      await courseRequestService.approveRequest(request.id!);
+      
+      // Create a Skill object from the request data for enrollment
+      const skillData = {
+        id: request.skillId,
+        userId: request.teacherId,
+        userName: request.teacherName,
+        userEmail: request.teacherEmail,
+        topic: request.skillTopic,
+        description: request.skillDescription,
+        cost: request.skillCost,
+        duration: request.skillDuration,
+        category: request.skillCategory,
+        imageUrl: request.skillImageUrl,
+        skills: request.skillSkills,
+        location: request.skillLocation,
+        createdAt: new Date() as any,
+        updatedAt: new Date() as any,
+      };
+
+      await enrollmentService.enrollInSkill(
+        request.studentId,
+        request.studentName,
+        request.studentEmail,
+        skillData as any
+      );
+      
+      Alert.alert('Success', 'Request approved and student enrolled!');
+      // Real-time listeners will automatically update the UI
+    } catch (error) {
+      console.error('Error approving request:', error);
+      Alert.alert('Error', 'Failed to approve request: ' + (error as Error)?.message);
+    }
+  };
+
+  // Handle course request decline
+  const handleDeclineRequest = async (request: CourseRequest) => {
+    try {
+      await courseRequestService.declineRequest(request.id!);
+      Alert.alert('Success', 'Request declined');
+      // Real-time listeners will automatically update the UI
+    } catch (error) {
+      console.error('Error declining request:', error);
+      Alert.alert('Error', 'Failed to decline request');
+    }
+  };
+
+  // Add a test course request for debugging
+  const addTestRequest = async () => {
+    if (!user) return;
+    
+    try {
+      // Create a mock skill for testing
+      const mockSkill = {
+        id: 'test-skill-request',
+        topic: 'Test Course Request',
+        description: 'This is a test course request for debugging',
+        cost: 15,
+        duration: '2 hours',
+        category: 'Test',
+        skills: ['Testing', 'Debugging', 'Requests'],
+        location: 'Online',
+        userId: user.id,
+        userName: user.name || user.email || 'Test Teacher',
+        userEmail: user.email || '',
+        imageUrl: '',
+        createdAt: new Date() as any,
+        updatedAt: new Date() as any
+      } as any;
+
+      await courseRequestService.createCourseRequest(
+        'test-student-id',
+        'Test Student',
+        'teststudent@example.com',
+        mockSkill,
+        'Hi! I would like to enroll in your test course. Please approve my request.'
+      );
+      
+      Alert.alert('Success', 'Test request added!');
+      // Real-time listeners will automatically update the UI
+    } catch (error) {
+      console.error('Error adding test request:', error);
+      Alert.alert('Error', 'Failed to add test request: ' + (error as Error)?.message);
+    }
+  };
+
+  const renderCourseCard = ({ item }: { item: Enrollment }) => (
     <TouchableOpacity
-      key={conversation.id}
-      style={[
-        styles.conversationCard,
-        { 
-          backgroundColor: Colors[colorScheme ?? 'light'].background,
-          borderColor: selectedConversation === conversation.id ? '#FF69B4' : '#e0e0e0'
-        }
-      ]}
-      onPress={() => setSelectedConversation(conversation.id)}
+      style={[styles.courseCard, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}
+      onPress={() => setSelectedCourse(item)}
     >
-      <View style={styles.conversationHeader}>
-        <Text style={styles.avatar}>{conversation.avatar}</Text>
-        <View style={styles.conversationInfo}>
-          <View style={styles.nameRow}>
-            <Text style={[styles.conversationName, { color: Colors[colorScheme ?? 'light'].text }]}>
-              {conversation.name}
+      <View style={styles.courseCardContent}>
+        <View style={styles.courseImageContainer}>
+          {item.skillImageUrl ? (
+            <Image source={{ uri: item.skillImageUrl }} style={styles.courseImage} />
+          ) : (
+            <View style={[styles.courseImagePlaceholder, { backgroundColor: '#FFE4E1' }]}>
+              <Text style={styles.courseImageText}>📚</Text>
+            </View>
+          )}
+        </View>
+        
+        <View style={styles.courseInfo}>
+          <Text style={[styles.courseTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+            {item.skillTopic}
+          </Text>
+          <Text style={[styles.teacherName, { color: Colors[colorScheme ?? 'light'].text }]}>
+            by {item.teacherName}
+          </Text>
+          <View style={styles.courseDetails}>
+            <Text style={[styles.courseDetail, { color: '#FF69B4' }]}>
+              {item.skillCost} credits
             </Text>
-            <Text style={[styles.timestamp, { color: Colors[colorScheme ?? 'light'].text }]}>
-              {conversation.timestamp}
+            <Text style={[styles.courseDetail, { color: Colors[colorScheme ?? 'light'].text }]}>
+              • {item.skillDuration}
             </Text>
           </View>
-          <View style={styles.messageRow}>
-            <Text 
-              style={[
-                styles.lastMessage, 
-                { color: Colors[colorScheme ?? 'light'].text },
-                conversation.unreadCount > 0 && styles.unreadMessage
-              ]}
-              numberOfLines={1}
-            >
-              {conversation.lastMessage}
+          <View style={styles.statusContainer}>
+            <View style={[
+              styles.statusBadge, 
+              { backgroundColor: item.status === 'active' ? '#4CAF50' : '#FF9800' }
+            ]}>
+              <Text style={styles.statusText}>
+                {item.status === 'active' ? 'Active' : 'Completed'}
             </Text>
-            {conversation.unreadCount > 0 && (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadCount}>{conversation.unreadCount}</Text>
               </View>
-            )}
           </View>
         </View>
       </View>
     </TouchableOpacity>
   );
 
-  const renderMessage = (message: Message) => (
+  const renderMessage = (message: Message) => {
+    const isSentByUser = message.senderId === user?.id;
+    const timestamp = message.timestamp instanceof Date 
+      ? message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : message.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return (
     <View
       key={message.id}
       style={[
         styles.messageBubble,
-        message.sender === 'You' ? styles.sentMessage : styles.receivedMessage
+          isSentByUser ? styles.sentMessage : styles.receivedMessage
       ]}
     >
       <Text style={[
         styles.messageText,
-        { color: message.sender === 'You' ? 'white' : 'black' }
+          { color: isSentByUser ? 'white' : 'black' }
       ]}>
         {message.content}
       </Text>
       <Text style={[
         styles.messageTime,
-        { color: message.sender === 'You' ? 'rgba(255,255,255,0.7)' : Colors[colorScheme ?? 'light'].text }
-      ]}>
-        {message.timestamp}
+          { color: isSentByUser ? 'rgba(255,255,255,0.7)' : Colors[colorScheme ?? 'light'].text }
+        ]}>
+          {timestamp}
+        </Text>
+      </View>
+    );
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedCourse || !newMessage.trim() || !user) return;
+
+    try {
+      // Determine receiver ID based on whether user is student or teacher
+      const receiverId = user.id === selectedCourse.studentId 
+        ? selectedCourse.teacherId 
+        : selectedCourse.studentId;
+
+      const messageData = {
+        senderId: user.id,
+        receiverId: receiverId,
+        content: newMessage.trim(),
+        timestamp: new Date() as any,
+        isRead: false,
+        enrollmentId: selectedCourse.id!,
+        senderName: user.name || user.email || 'Anonymous',
+      };
+
+      await messagesService.addMessage(messageData);
+      setNewMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message');
+    }
+  };
+
+  const handleCallTeacher = () => {
+    Alert.alert(
+      'Call Teacher',
+      `Call ${selectedCourse?.teacherName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Call', onPress: () => {
+          Alert.alert('Coming Soon', 'Video calling feature will be available soon!');
+        }}
+      ]
+    );
+  };
+
+  // Render teaching card (students enrolled in your courses)
+  const renderTeachingCard = ({ item }: { item: Enrollment }) => (
+    <TouchableOpacity
+      style={[styles.courseCard, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}
+      onPress={() => setSelectedCourse(item)}
+    >
+      <View style={styles.courseHeader}>
+        <Text style={[styles.courseTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+          {item.skillTopic}
+        </Text>
+        <Text style={[styles.courseStatus, { color: '#4CAF50' }]}>
+          {item.status}
+        </Text>
+      </View>
+      
+      <Text style={[styles.studentInfo, { color: Colors[colorScheme ?? 'light'].text }]}>
+        Student: {item.studentName}
       </Text>
+      
+      <Text style={[styles.courseDescription, { color: Colors[colorScheme ?? 'light'].text }]}>
+        {item.skillDescription}
+      </Text>
+      
+      <View style={styles.courseMeta}>
+        <Text style={[styles.courseCost, { color: '#FF69B4' }]}>
+          {item.skillCost} credits
+        </Text>
+        <Text style={[styles.courseDuration, { color: Colors[colorScheme ?? 'light'].text }]}>
+          {item.skillDuration}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  // Render request card (pending course requests)
+  const renderRequestCard = ({ item }: { item: CourseRequest }) => (
+    <View style={[styles.requestCard, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+      <View style={styles.requestHeader}>
+        <Text style={[styles.requestTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+          {item.skillTopic}
+        </Text>
+        <Text style={[styles.requestStatus, { color: '#FF9800' }]}>
+          {item.status}
+        </Text>
+      </View>
+      
+      <Text style={[styles.studentInfo, { color: Colors[colorScheme ?? 'light'].text }]}>
+        Request from: {item.studentName}
+      </Text>
+      
+      {item.message && (
+        <Text style={[styles.requestMessage, { color: Colors[colorScheme ?? 'light'].text }]}>
+          "{item.message}"
+        </Text>
+      )}
+      
+      <View style={styles.courseMeta}>
+        <Text style={[styles.courseCost, { color: '#FF69B4' }]}>
+          {item.skillCost} credits
+        </Text>
+        <Text style={[styles.courseDuration, { color: Colors[colorScheme ?? 'light'].text }]}>
+          {item.skillDuration}
+        </Text>
+      </View>
+      
+      <View style={styles.requestActions}>
+        <TouchableOpacity
+          style={[styles.approveButton, { backgroundColor: '#4CAF50' }]}
+          onPress={() => handleApproveRequest(item)}
+        >
+          <Text style={styles.actionButtonText}>Approve</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.declineButton, { backgroundColor: '#F44336' }]}
+          onPress={() => handleDeclineRequest(item)}
+        >
+          <Text style={styles.actionButtonText}>Decline</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
-  if (selectedConversation) {
-    // pick messages for the selected conversation
-    const messagesForSelected = conversationMessages[selectedConversation] ?? [];
-    const currentConversation = conversations.find(c => c.id === selectedConversation);
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+        <ActivityIndicator size="large" color="#FF69B4" />
+        <Text style={[styles.loadingText, { color: Colors[colorScheme ?? 'light'].text }]}>
+          Loading your courses...
+        </Text>
+      </View>
+    );
+  }
 
-    const handleSend = () => {
-      const text = newMessage.trim();
-      if (!text) return;
-
-      const newMsg: Message = {
-        id: Date.now().toString(),
-        sender: 'You',
-        content: text,
-        timestamp: 'Now',
-        isRead: true,
-      };
-
-      setConversationMessages(prev => {
-        const existing = prev[selectedConversation] ?? [];
-        return { ...prev, [selectedConversation]: [...existing, newMsg] };
-      });
-
-      setConversations(prev =>
-        prev.map(c => (c.id === selectedConversation ? { ...c, lastMessage: newMsg.content, timestamp: 'Now' } : c))
-      );
-
-      setNewMessage('');
-
-      // scroll to bottom after update
-      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
-    };
-
+  if (selectedCourse) {
     return (
       <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
-        {/* Chat Header */}
-        <View style={[styles.chatHeader, { borderBottomColor: '#e0e0e0' }]}>
-          <TouchableOpacity onPress={() => setSelectedConversation(null)}>
+        {/* Course Header */}
+        <View style={[styles.courseHeader, { borderBottomColor: '#e0e0e0' }]}>
+          <TouchableOpacity onPress={() => setSelectedCourse(null)}>
             <Text style={[styles.backButton, { color: '#FF69B4' }]}>← Back</Text>
           </TouchableOpacity>
-          <View style={styles.chatHeaderInfo}>
-            <Text style={styles.chatAvatar}>{currentConversation?.avatar ?? '👤'}</Text>
-            <Text style={[styles.chatName, { color: Colors[colorScheme ?? 'light'].text }]}>
-              {currentConversation?.name ?? ''}
+          <View style={styles.courseHeaderInfo}>
+            <Text style={[styles.courseHeaderTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+              {selectedCourse.skillTopic}
+            </Text>
+            <Text style={[styles.courseHeaderTeacher, { color: Colors[colorScheme ?? 'light'].text }]}>
+              with {selectedCourse.teacherName}
             </Text>
           </View>
         </View>
 
+        {/* Course Info */}
+        <ScrollView style={styles.courseInfoContainer} showsVerticalScrollIndicator={false}>
+          <View style={styles.courseInfoCard}>
+            <Text style={[styles.courseInfoTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+              Course Details
+            </Text>
+            <Text style={[styles.courseInfoText, { color: Colors[colorScheme ?? 'light'].text }]}>
+              {selectedCourse.skillDescription}
+            </Text>
+            
+            <View style={styles.courseInfoRow}>
+              <Text style={[styles.courseInfoLabel, { color: Colors[colorScheme ?? 'light'].text }]}>
+                Duration: {selectedCourse.skillDuration}
+              </Text>
+              <Text style={[styles.courseInfoLabel, { color: Colors[colorScheme ?? 'light'].text }]}>
+                Cost: {selectedCourse.skillCost} credits
+              </Text>
+            </View>
+            
+            <View style={styles.skillsContainer}>
+              <Text style={[styles.skillsTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+                Skills Covered:
+              </Text>
+              <View style={styles.skillTags}>
+                {selectedCourse.skillSkills.map((skill, index) => (
+                  <View key={index} style={styles.skillTag}>
+                    <Text style={styles.skillTagText}>{skill}</Text>
+                  </View>
+                ))}
+              </View>
+          </View>
+        </View>
+
         {/* Messages */}
-        <ScrollView
-          style={styles.messagesContainer}
-          showsVerticalScrollIndicator={false}
-          ref={ref => { scrollViewRef.current = ref; }}
-        >
-          {messagesForSelected.map(renderMessage)}
+          <View style={styles.messagesSection}>
+            <Text style={[styles.messagesTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
+              Messages
+            </Text>
+            {courseMessages.length === 0 ? (
+              <Text style={[styles.noMessagesText, { color: Colors[colorScheme ?? 'light'].text }]}>
+                No messages yet. Start a conversation with your teacher!
+              </Text>
+            ) : (
+              courseMessages.map(renderMessage)
+            )}
+          </View>
         </ScrollView>
 
         {/* Message Input */}
@@ -225,15 +600,20 @@ export default function MessagesScreen() {
                 borderColor: Colors[colorScheme ?? 'light'].text
               }
             ]}
-            placeholder="Type a message..."
+            placeholder="Message your teacher..."
             placeholderTextColor={Colors[colorScheme ?? 'light'].text}
             value={newMessage}
             onChangeText={setNewMessage}
             multiline
           />
-          <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+          <View style={styles.inputActions}>
+            <TouchableOpacity style={styles.callButton} onPress={handleCallTeacher}>
+              <Text style={styles.callButtonText}>📞</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
             <Text style={styles.sendButtonText}>Send</Text>
           </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -243,16 +623,121 @@ export default function MessagesScreen() {
     <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: Colors[colorScheme ?? 'light'].text }]}>
-          Messages
+          My Courses
         </Text>
-        <Text style={[styles.subtitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-          Connect with your learning community
+        
+        {/* Tab Navigation */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'enrolled' && styles.activeTab]}
+            onPress={() => setActiveTab('enrolled')}
+          >
+            <Text style={[styles.tabText, activeTab === 'enrolled' && styles.activeTabText]}>
+              Enrolled ({enrollments.length})
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'teaching' && styles.activeTab]}
+            onPress={() => setActiveTab('teaching')}
+          >
+            <Text style={[styles.tabText, activeTab === 'teaching' && styles.activeTabText]}>
+              Teaching ({teachingEnrollments.length})
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'requests' && styles.activeTab]}
+            onPress={() => setActiveTab('requests')}
+          >
+            <Text style={[styles.tabText, activeTab === 'requests' && styles.activeTabText]}>
+              Requests ({courseRequests.length})
         </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView style={styles.conversationsList} showsVerticalScrollIndicator={false}>
-        {conversations.map(renderConversation)}
-      </ScrollView>
+      {/* Tab Content */}
+      {activeTab === 'enrolled' && (
+        <>
+          {enrollments.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={[styles.emptyText, { color: Colors[colorScheme ?? 'light'].text }]}>
+                You haven't enrolled in any courses yet.
+              </Text>
+              <Text style={[styles.emptySubtext, { color: Colors[colorScheme ?? 'light'].text }]}>
+                Browse the Home tab to find skills you'd like to learn!
+              </Text>
+              <TouchableOpacity 
+                style={styles.testButton}
+                onPress={addTestEnrollment}
+              >
+                <Text style={styles.testButtonText}>Add Test Course (Debug)</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={enrollments}
+              renderItem={renderCourseCard}
+              keyExtractor={(item) => item.id!}
+              contentContainerStyle={styles.coursesList}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </>
+      )}
+
+      {activeTab === 'teaching' && (
+        <>
+          {teachingEnrollments.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={[styles.emptyText, { color: Colors[colorScheme ?? 'light'].text }]}>
+                No students enrolled in your courses yet.
+              </Text>
+              <Text style={[styles.emptySubtext, { color: Colors[colorScheme ?? 'light'].text }]}>
+                Students will appear here when they enroll in your skills.
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={teachingEnrollments}
+              renderItem={renderTeachingCard}
+              keyExtractor={(item) => item.id!}
+              contentContainerStyle={styles.coursesList}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </>
+      )}
+
+      {activeTab === 'requests' && (
+        <>
+          {courseRequests.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={[styles.emptyText, { color: Colors[colorScheme ?? 'light'].text }]}>
+                No pending course requests.
+              </Text>
+              <Text style={[styles.emptySubtext, { color: Colors[colorScheme ?? 'light'].text }]}>
+                Students will send requests to enroll in your courses.
+              </Text>
+              <TouchableOpacity 
+                style={styles.testButton}
+                onPress={addTestRequest}
+              >
+                <Text style={styles.testButtonText}>Add Test Request (Debug)</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={courseRequests}
+              renderItem={renderRequestCard}
+              keyExtractor={(item) => item.id!}
+              contentContainerStyle={styles.coursesList}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </>
+      )}
     </View>
   );
 }
@@ -261,9 +746,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
   header: {
     padding: 20,
-    paddingTop: 20,
+    paddingTop: 60,
     paddingBottom: 10,
   },
   title: {
@@ -275,82 +765,111 @@ const styles = StyleSheet.create({
     fontSize: 16,
     opacity: 0.7,
   },
-  conversationsList: {
-    flex: 1,
-    paddingHorizontal: 20,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
   },
-  conversationCard: {
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    opacity: 0.7,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  testButton: {
+    backgroundColor: '#FF69B4',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 20,
+    marginTop: 10,
+  },
+  testButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  coursesList: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  courseCard: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderColor: '#FFE4E1',
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowColor: '#FF69B4',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  conversationHeader: {
+  courseCardContent: {
     flexDirection: 'row',
+  },
+  courseImageContainer: {
+    marginRight: 16,
+  },
+  courseImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+  },
+  courseImagePlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  avatar: {
-    fontSize: 32,
-    marginRight: 12,
+  courseImageText: {
+    fontSize: 24,
   },
-  conversationInfo: {
+  courseInfo: {
     flex: 1,
   },
-  nameRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  courseTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
     marginBottom: 4,
   },
-  conversationName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  timestamp: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  lastMessage: {
+  teacherName: {
     fontSize: 14,
     opacity: 0.7,
-    flex: 1,
+    marginBottom: 8,
   },
-  unreadMessage: {
-    fontWeight: '600',
-    opacity: 1,
+  courseDetails: {
+    flexDirection: 'row',
+    marginBottom: 8,
   },
-  unreadBadge: {
-    backgroundColor: '#FF69B4',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  unreadCount: {
-    color: 'white',
+  courseDetail: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '500',
   },
-  // Chat view styles
-  chatHeader: {
+  statusContainer: {
+    alignSelf: 'flex-start',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  // Course Detail View Styles
+  courseHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 20,
+    paddingTop: 60,
     borderBottomWidth: 1,
   },
   backButton: {
@@ -358,21 +877,88 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: 16,
   },
-  chatHeaderInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  courseHeaderInfo: {
     flex: 1,
   },
-  chatAvatar: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  chatName: {
+  courseHeaderTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    marginBottom: 2,
   },
-  messagesContainer: {
+  courseHeaderTeacher: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  courseInfoContainer: {
     flex: 1,
+    padding: 20,
+  },
+  courseInfoCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  courseInfoTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  courseInfoText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  courseInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  courseInfoLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  skillsContainer: {
+    marginBottom: 16,
+  },
+  skillsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  skillTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  skillTag: {
+    backgroundColor: '#FF69B4',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  skillTagText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  messagesSection: {
+    marginBottom: 20,
+  },
+  messagesTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  noMessagesText: {
+    fontSize: 14,
+    opacity: 0.7,
+    textAlign: 'center',
     padding: 20,
   },
   messageBubble: {
@@ -413,6 +999,22 @@ const styles = StyleSheet.create({
     marginRight: 12,
     maxHeight: 100,
   },
+  inputActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  callButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#4CAF50',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  callButtonText: {
+    fontSize: 20,
+  },
   sendButton: {
     backgroundColor: '#FF69B4',
     paddingHorizontal: 20,
@@ -423,5 +1025,122 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Tab styles
+  tabContainer: {
+    flexDirection: 'row',
+    marginTop: 20,
+    marginBottom: 10,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  activeTab: {
+    backgroundColor: '#FF69B4',
+  },
+  tabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  activeTabText: {
+    color: 'white',
+  },
+  // Teaching card styles
+  studentInfo: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#666',
+  },
+  // Request card styles
+  requestCard: {
+    borderWidth: 1,
+    borderColor: '#FFE4E1',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  requestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  requestTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  requestStatus: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  requestMessage: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginBottom: 12,
+    padding: 8,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  approveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  declineButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  actionButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Course detail styles
+  courseStatus: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  courseDescription: {
+    fontSize: 14,
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  courseMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  courseCost: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  courseDuration: {
+    fontSize: 14,
+    opacity: 0.7,
   },
 });

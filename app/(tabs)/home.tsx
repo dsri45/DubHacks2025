@@ -1,9 +1,13 @@
 import { Colors } from '@/constants/theme';
+import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import React, { useState } from 'react';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
-  Image,
   Modal,
   SafeAreaView,
   ScrollView,
@@ -13,6 +17,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { courseRequestService, Skill, skillsService, storageService } from '../../services/firebaseService';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 60) / 2; // 2 columns with padding
@@ -193,57 +198,168 @@ interface Post {
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
-  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const { user } = useAuth();
+  const [selectedPost, setSelectedPost] = useState<Skill | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const userCredits = 150; // Sample user credits
+  const [showAddSkillModal, setShowAddSkillModal] = useState(false);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [newSkill, setNewSkill] = useState({
+    topic: '',
+    description: '',
+    cost: '',
+    duration: '',
+    category: 'Other',
+    skills: '',
+    location: ''
+  });
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [userCredits, setUserCredits] = useState(150); // User credits state
+  const [unsubscribeSkills, setUnsubscribeSkills] = useState<(() => void) | null>(null);
 
-  // Filter posts based on search query
-  const filteredPosts = samplePosts.filter(post => 
-    post.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    post.topic.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    post.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    post.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    post.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()))
+  // Set up real-time listener for skills
+  useEffect(() => {
+    console.log('Setting up real-time skills listener');
+    setLoading(true);
+
+    // Clean up existing listener
+    if (unsubscribeSkills) {
+      unsubscribeSkills();
+    }
+
+    // Set up real-time listener
+    const unsubscribe = skillsService.subscribeToAllSkills((skills) => {
+      console.log('Real-time skills update:', skills);
+      setSkills(skills);
+      setLoading(false);
+    });
+
+    setUnsubscribeSkills(() => unsubscribe);
+
+    // Cleanup function
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, []);
+
+  // Cleanup listener when component unmounts
+  useEffect(() => {
+    return () => {
+      if (unsubscribeSkills) {
+        unsubscribeSkills();
+      }
+    };
+  }, [unsubscribeSkills]);
+
+  // Manual loading function (kept for fallback)
+  const loadSkills = async () => {
+    try {
+      setLoading(true);
+      const skillsData = await skillsService.getAllSkills();
+      setSkills(skillsData);
+    } catch (error: any) {
+      Alert.alert('Error', 'Failed to load skills');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter skills based on search query
+  const filteredSkills = skills.filter(skill => 
+    skill.topic.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    skill.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    skill.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    skill.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    skill.skills.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const renderPost = (post: Post) => (
+  // Image picker function (same as profile)
+  const pickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Permission to access media library is required!');
+        return;
+      }
+
+      console.log('Launching image picker...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        // some installed versions expect the lowercase string values
+        // (e.g. 'images', 'videos', 'livePhotos') so pass the literal to avoid runtime casting issues
+        mediaTypes: 'images' as any,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      console.log('Image picker result:', result);
+
+      if (!(result as any).cancelled) {
+        // expo-image-picker v14 returns an object with assets
+        const uri = (result as any).assets?.[0]?.uri ?? (result as any).uri;
+        console.log('Selected image URI:', uri);
+        if (uri) {
+          setSelectedImage(uri);
+          console.log('Image set successfully');
+        } else {
+          console.log('No URI found in result');
+        }
+      } else {
+        console.log('Image picker cancelled');
+      }
+    } catch (error) {
+      console.error('Error in image picker:', error);
+      Alert.alert('Error', 'Failed to open image picker. Please try again.');
+    }
+  };
+
+  const renderSkill = (skill: Skill) => (
     <TouchableOpacity
-      key={post.id}
+      key={skill.id}
       style={[
         styles.postCard, 
         { 
           backgroundColor: Colors[colorScheme ?? 'light'].background,
-          height: post.height
+          height: 250
         }
       ]}
-      onPress={() => setSelectedPost(post)}
+      onPress={() => setSelectedPost(skill)}
     >
-      <View style={[styles.postImage, { height: post.height * 0.6 }]}>
-        <Image 
-          source={post.image} 
-          style={styles.postImageContent}
-          resizeMode="cover"
-        />
+      <View style={[styles.postImage, { height: 150 }]}>
+        {skill.imageUrl ? (
+          <Image 
+            source={{ uri: skill.imageUrl }} 
+            style={styles.postImageContent}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[styles.postImageContent, { backgroundColor: '#FFE4E1', alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={{ fontSize: 24, color: '#FF69B4' }}>📚</Text>
+          </View>
+        )}
       </View>
       <View style={styles.postContent}>
         <Text style={[styles.postName, { color: Colors[colorScheme ?? 'light'].text }]}>
-          {post.name}
+          {skill.userName}
         </Text>
         <Text 
           style={[styles.postTopic, { color: Colors[colorScheme ?? 'light'].text }]}
           numberOfLines={3}
         >
-          {post.topic}
+          {skill.topic}
         </Text>
         <Text style={[styles.postCategory, { color: '#FF69B4' }]}>
-          {post.category}
+          {skill.category}
         </Text>
         <View style={styles.postFooter}>
           <Text style={[styles.postCost, { color: Colors[colorScheme ?? 'light'].text }]}>
-            {post.cost} credits
+            {skill.cost} credits
           </Text>
           <Text style={[styles.postDuration, { color: Colors[colorScheme ?? 'light'].text }]}>
-            {post.duration}
+            {skill.duration}
           </Text>
         </View>
       </View>
@@ -257,10 +373,18 @@ export default function HomeScreen() {
           <Text style={[styles.title, { color: Colors[colorScheme ?? 'light'].text }]}>
             DubHacks
           </Text>
-          <View style={styles.creditsContainer}>
-            <Text style={[styles.creditsText, { color: '#FF69B4' }]}>
-              {userCredits} credits
-            </Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.addSkillButton}
+              onPress={() => setShowAddSkillModal(true)}
+            >
+              <Text style={styles.addSkillButtonText}>+</Text>
+            </TouchableOpacity>
+            <View style={styles.creditsContainer}>
+              <Text style={[styles.creditsText, { color: '#FF69B4' }]}>
+                {userCredits} credits
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -283,13 +407,22 @@ export default function HomeScreen() {
         />
       </View>
       
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.postsContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        {filteredPosts.map(renderPost)}
-      </ScrollView>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF69B4" />
+          <Text style={[styles.loadingText, { color: Colors[colorScheme ?? 'light'].text }]}>
+            Loading skills...
+          </Text>
+        </View>
+      ) : (
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.postsContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {filteredSkills.map(renderSkill)}
+        </ScrollView>
+      )}
 
       {/* Post Detail Modal */}
       <Modal
@@ -313,15 +446,21 @@ export default function HomeScreen() {
             
             <ScrollView style={styles.modalContent}>
               <View style={styles.modalImage}>
-                <Image 
-                  source={selectedPost.image} 
-                  style={styles.modalImageContent}
-                  resizeMode="cover"
-                />
+                {selectedPost.imageUrl ? (
+                  <Image 
+                    source={{ uri: selectedPost.imageUrl }} 
+                    style={styles.modalImageContent}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.modalImageContent, { backgroundColor: '#FFE4E1', alignItems: 'center', justifyContent: 'center' }]}>
+                    <Text style={{ fontSize: 48, color: '#FF69B4' }}>📚</Text>
+                  </View>
+                )}
               </View>
               
               <Text style={[styles.modalName, { color: Colors[colorScheme ?? 'light'].text }]}>
-                {selectedPost.name}
+                {selectedPost.userName}
               </Text>
               
               <Text style={[styles.modalTopic, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -366,16 +505,274 @@ export default function HomeScreen() {
               
               <TouchableOpacity
                 style={[styles.enrollButton, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}
-                onPress={() => {
-                  // TODO: Implement enrollment logic
-                  setSelectedPost(null);
+                onPress={async () => {
+                  if (!user) {
+                    Alert.alert('Error', 'Please log in to request enrollment');
+                    return;
+                  }
+
+                  if (userCredits < selectedPost.cost) {
+                    Alert.alert('Insufficient Credits', `You need ${selectedPost.cost} credits but only have ${userCredits}. Please add more credits.`);
+                    return;
+                  }
+
+                  Alert.alert(
+                    'Request Enrollment',
+                    `Send enrollment request for "${selectedPost.topic}" for ${selectedPost.cost} credits?`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Send Request', 
+                        onPress: async () => {
+                          try {
+                            // Create course request
+                            await courseRequestService.createCourseRequest(
+                              user.id,
+                              user.name || user.email || 'Anonymous',
+                              user.email || '',
+                              selectedPost,
+                              `Hi! I'd like to enroll in your "${selectedPost.topic}" course.`
+                            );
+                            
+                            setSelectedPost(null);
+                            Alert.alert('Success', 'Enrollment request sent! The teacher will review and approve your request.');
+                          } catch (error: any) {
+                            Alert.alert('Error', 'Failed to send request: ' + (error?.message || 'Unknown error'));
+                          }
+                        }
+                      }
+                    ]
+                  );
                 }}
               >
-                <Text style={styles.enrollButtonText}>Enroll Now</Text>
+                <Text style={styles.enrollButtonText}>Request Enrollment ({selectedPost.cost} credits)</Text>
               </TouchableOpacity>
             </ScrollView>
           </SafeAreaView>
         )}
+      </Modal>
+
+      {/* Add Skill Modal */}
+      <Modal
+        visible={showAddSkillModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAddSkillModal(false)}
+      >
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowAddSkillModal(false)}
+            >
+              <Text style={[styles.closeButtonText, { color: Colors[colorScheme ?? 'light'].tint }]}>
+                ✕
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.modalContent}>
+            <Text style={[styles.modalName, { color: Colors[colorScheme ?? 'light'].text }]}>
+              Add Your Skill
+            </Text>
+            <Text style={[styles.modalDescription, { color: Colors[colorScheme ?? 'light'].text }]}>
+              Share what you can teach with the community
+            </Text>
+            
+            {/* Image Upload Section */}
+            <View style={styles.imageUploadSection}>
+              <Text style={[styles.imageUploadLabel, { color: Colors[colorScheme ?? 'light'].text }]}>
+                Add Image (Optional)
+              </Text>
+              <TouchableOpacity style={styles.imageUploadButton} onPress={pickImage}>
+                {selectedImage ? (
+                  <Image source={{ uri: selectedImage }} style={styles.uploadedImage} />
+                ) : (
+                  <View style={styles.imageUploadPlaceholder}>
+                    <Text style={styles.imageUploadText}>📷</Text>
+                    <Text style={styles.imageUploadSubtext}>Tap to add image</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              
+              {/* Debug info */}
+              {selectedImage && (
+                <Text style={[styles.debugText, { color: Colors[colorScheme ?? 'light'].text }]}>
+                  Image selected: {selectedImage.substring(0, 50)}...
+                </Text>
+              )}
+              
+            </View>
+
+            <TextInput
+              style={[styles.addSkillInput, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Skill/Topic (e.g., 'Digital Art', 'Guitar Lessons')"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={newSkill.topic}
+              onChangeText={(text) => setNewSkill({...newSkill, topic: text})}
+            />
+            
+            <TextInput
+              style={[styles.addSkillInput, styles.addSkillTextArea, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Description of what you'll teach..."
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={newSkill.description}
+              onChangeText={(text) => setNewSkill({...newSkill, description: text})}
+              multiline
+              numberOfLines={4}
+            />
+            
+            <View style={styles.addSkillRow}>
+              <TextInput
+                style={[styles.addSkillInput, styles.addSkillHalf, { 
+                  backgroundColor: Colors[colorScheme ?? 'light'].background,
+                  color: Colors[colorScheme ?? 'light'].text,
+                  borderColor: Colors[colorScheme ?? 'light'].text
+                }]}
+                placeholder="Cost (credits)"
+                placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+                value={newSkill.cost}
+                onChangeText={(text) => setNewSkill({...newSkill, cost: text})}
+                keyboardType="numeric"
+              />
+              
+              <TextInput
+                style={[styles.addSkillInput, styles.addSkillHalf, { 
+                  backgroundColor: Colors[colorScheme ?? 'light'].background,
+                  color: Colors[colorScheme ?? 'light'].text,
+                  borderColor: Colors[colorScheme ?? 'light'].text
+                }]}
+                placeholder="Duration (e.g., '2 hours')"
+                placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+                value={newSkill.duration}
+                onChangeText={(text) => setNewSkill({...newSkill, duration: text})}
+              />
+            </View>
+            
+            <TextInput
+              style={[styles.addSkillInput, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Skills (comma-separated, e.g., 'JavaScript, React, Node.js')"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={newSkill.skills}
+              onChangeText={(text) => setNewSkill({...newSkill, skills: text})}
+            />
+
+            <TextInput
+              style={[styles.addSkillInput, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Location (e.g., 'Seattle, WA')"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={newSkill.location}
+              onChangeText={(text) => setNewSkill({...newSkill, location: text})}
+            />
+
+            <TextInput
+              style={[styles.addSkillInput, { 
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                color: Colors[colorScheme ?? 'light'].text,
+                borderColor: Colors[colorScheme ?? 'light'].text
+              }]}
+              placeholder="Category (e.g., 'Art', 'Music', 'Technology')"
+              placeholderTextColor={Colors[colorScheme ?? 'light'].text}
+              value={newSkill.category}
+              onChangeText={(text) => setNewSkill({...newSkill, category: text})}
+            />
+            
+
+            <TouchableOpacity
+              style={[styles.enrollButton, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}
+              onPress={async () => {
+                if (!user) {
+                  Alert.alert('Error', 'Please log in to add a skill');
+                  return;
+                }
+
+                if (!newSkill.topic || !newSkill.description || !newSkill.cost || !newSkill.duration || !newSkill.location) {
+                  Alert.alert('Error', 'Please fill in all required fields');
+                  return;
+                }
+
+                try {
+                  setUploading(true);
+                  
+                  let imageUrl = '';
+                  if (selectedImage) {
+                    try {
+                      console.log('Starting image upload for:', selectedImage);
+                      const imagePath = `skills/${user.id}/${Date.now()}.jpg`;
+                      console.log('Uploading to path:', imagePath);
+                      imageUrl = await storageService.uploadImage(selectedImage, imagePath);
+                      console.log('Image uploaded successfully:', imageUrl);
+                    } catch (imageError: any) {
+                      console.error('Image upload failed:', imageError);
+                      Alert.alert('Image Upload Failed', 'Failed to upload image. The skill will be added without an image.');
+                      imageUrl = '';
+                    }
+                  }
+
+                  const skillData = {
+                    userId: user.id,
+                    userName: user.name || user.email || 'Anonymous',
+                    userEmail: user.email || '',
+                    topic: newSkill.topic,
+                    description: newSkill.description,
+                    cost: parseInt(newSkill.cost) || 0,
+                    duration: newSkill.duration,
+                    category: newSkill.category,
+                    imageUrl: imageUrl,
+                    skills: newSkill.skills.split(',').map(s => s.trim()).filter(s => s.length > 0),
+                    location: newSkill.location
+                  };
+
+                  await skillsService.addSkill(skillData);
+                  
+                  // Reset form
+                  setNewSkill({
+                    topic: '',
+                    description: '',
+                    cost: '',
+                    duration: '',
+                    category: 'Other',
+                    skills: '',
+                    location: ''
+                  });
+                  setSelectedImage(null);
+                  setShowAddSkillModal(false);
+                  
+                  // Real-time listener will automatically update the UI
+                  
+                  Alert.alert('Success', 'Your skill has been added to the community!');
+                } catch (error: any) {
+                  Alert.alert('Error', 'Failed to add skill. Please try again.');
+                } finally {
+                  setUploading(false);
+                }
+              }}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.enrollButtonText}>Add Skill</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -395,6 +792,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  addSkillButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FF69B4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addSkillButtonText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   title: {
     fontSize: 36,
@@ -625,5 +1048,76 @@ const styles = StyleSheet.create({
     color: 'black',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  addSkillInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  addSkillTextArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  addSkillRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  addSkillHalf: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+  },
+  imageUploadSection: {
+    marginBottom: 16,
+  },
+  imageUploadLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  imageUploadButton: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  imageUploadPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageUploadText: {
+    fontSize: 32,
+    marginBottom: 4,
+  },
+  imageUploadSubtext: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+  uploadedImage: {
+    width: 116,
+    height: 116,
+    borderRadius: 10,
+  },
+  debugText: {
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: 'center',
+    opacity: 0.7,
   },
 });
