@@ -1,6 +1,6 @@
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface Message {
@@ -24,9 +24,8 @@ export default function MessagesScreen() {
   const colorScheme = useColorScheme();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
-
-  // Mock conversations
-  const conversations: Conversation[] = [
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([
     {
       id: '1',
       name: 'Sarah Chen',
@@ -67,39 +66,29 @@ export default function MessagesScreen() {
       unreadCount: 0,
       avatar: '📄'
     },
-  ];
+  ]);
 
-  // Mock messages for selected conversation
-  const messages: Message[] = [
-    {
-      id: '1',
-      sender: 'Marcus Johnson',
-      content: 'Hi! I saw your 3D printing session and I\'m really interested.',
-      timestamp: '2h ago',
-      isRead: true
-    },
-    {
-      id: '2',
-      sender: 'You',
-      content: 'Great! I\'d be happy to help you get started with 3D printing.',
-      timestamp: '2h ago',
-      isRead: true
-    },
-    {
-      id: '3',
-      sender: 'Marcus Johnson',
-      content: 'When is the next 3D printing workshop?',
-      timestamp: '1h ago',
-      isRead: false
-    },
-    {
-      id: '4',
-      sender: 'Marcus Johnson',
-      content: 'I have some experience with CAD software already.',
-      timestamp: '1h ago',
-      isRead: false
-    },
-  ];
+  // Mock messages per conversation (make stateful so we can append)
+  const [conversationMessages, setConversationMessages] = useState<Record<string, Message[]>>({
+    '1': [
+      { id: '1', sender: 'Sarah Chen', content: 'Loved the drawing tips today — thanks!', timestamp: '2m ago', isRead: true },
+      { id: '2', sender: 'You', content: 'Glad it helped! Want to practice together?', timestamp: '1m ago', isRead: true },
+    ],
+    '2': [
+      { id: '1', sender: 'Marcus Johnson', content: 'When is the next 3D printing workshop?', timestamp: '1h ago', isRead: false },
+      { id: '2', sender: 'You', content: 'Next Saturday at 10am — want me to save a spot?', timestamp: '55m ago', isRead: true },
+      { id: '3', sender: 'Marcus Johnson', content: 'Yes please, that would be great!', timestamp: '50m ago', isRead: false },
+    ],
+    '3': [
+      { id: '1', sender: 'Elena Rodriguez', content: 'The guitar lesson was amazing — thanks for the chord charts.', timestamp: '3h ago', isRead: true },
+    ],
+    '4': [
+      { id: '1', sender: 'David Kim', content: 'Can we schedule a marketing consultation next week?', timestamp: '1d ago', isRead: false },
+    ],
+    '5': [
+      { id: '1', sender: 'Lisa Wang', content: 'The origami techniques were so helpful. Any tips for beginners?', timestamp: '2d ago', isRead: true },
+    ],
+  });
 
   const renderConversation = (conversation: Conversation) => (
     <TouchableOpacity
@@ -156,7 +145,7 @@ export default function MessagesScreen() {
     >
       <Text style={[
         styles.messageText,
-        { color: message.sender === 'You' ? 'white' : Colors[colorScheme ?? 'light'].text }
+        { color: message.sender === 'You' ? 'white' : 'black' }
       ]}>
         {message.content}
       </Text>
@@ -170,6 +159,37 @@ export default function MessagesScreen() {
   );
 
   if (selectedConversation) {
+    // pick messages for the selected conversation
+    const messagesForSelected = conversationMessages[selectedConversation] ?? [];
+    const currentConversation = conversations.find(c => c.id === selectedConversation);
+
+    const handleSend = () => {
+      const text = newMessage.trim();
+      if (!text) return;
+
+      const newMsg: Message = {
+        id: Date.now().toString(),
+        sender: 'You',
+        content: text,
+        timestamp: 'Now',
+        isRead: true,
+      };
+
+      setConversationMessages(prev => {
+        const existing = prev[selectedConversation] ?? [];
+        return { ...prev, [selectedConversation]: [...existing, newMsg] };
+      });
+
+      setConversations(prev =>
+        prev.map(c => (c.id === selectedConversation ? { ...c, lastMessage: newMsg.content, timestamp: 'Now' } : c))
+      );
+
+      setNewMessage('');
+
+      // scroll to bottom after update
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
+    };
+
     return (
       <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
         {/* Chat Header */}
@@ -178,16 +198,20 @@ export default function MessagesScreen() {
             <Text style={[styles.backButton, { color: '#FF69B4' }]}>← Back</Text>
           </TouchableOpacity>
           <View style={styles.chatHeaderInfo}>
-            <Text style={styles.chatAvatar}>🖨️</Text>
+            <Text style={styles.chatAvatar}>{currentConversation?.avatar ?? '👤'}</Text>
             <Text style={[styles.chatName, { color: Colors[colorScheme ?? 'light'].text }]}>
-              Marcus Johnson
+              {currentConversation?.name ?? ''}
             </Text>
           </View>
         </View>
 
         {/* Messages */}
-        <ScrollView style={styles.messagesContainer} showsVerticalScrollIndicator={false}>
-          {messages.map(renderMessage)}
+        <ScrollView
+          style={styles.messagesContainer}
+          showsVerticalScrollIndicator={false}
+          ref={ref => { scrollViewRef.current = ref; }}
+        >
+          {messagesForSelected.map(renderMessage)}
         </ScrollView>
 
         {/* Message Input */}
@@ -207,7 +231,7 @@ export default function MessagesScreen() {
             onChangeText={setNewMessage}
             multiline
           />
-          <TouchableOpacity style={styles.sendButton}>
+          <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
             <Text style={styles.sendButtonText}>Send</Text>
           </TouchableOpacity>
         </View>

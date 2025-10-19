@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   loginButtonText: {
-    color: '#fff',
+    color: 'black',
     fontSize: 16,
     fontWeight: '600',
   },
