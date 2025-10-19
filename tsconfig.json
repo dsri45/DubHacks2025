@@ -3,6 +3,11 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "strict": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
     "paths": {
       "@/*": [
         "./*"
@@ -14,7 +19,14 @@
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
+<<<<<<< Updated upstream
     "expo-env.d.ts",
     "types/**/*.d.ts"
+=======
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+>>>>>>> Stashed changes
   ]
 }
