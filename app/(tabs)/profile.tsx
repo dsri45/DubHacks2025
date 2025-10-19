@@ -1,3 +1,4 @@
+
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -266,7 +267,6 @@ export default function ProfileScreen() {
 
       {/* Web file input fallback (hidden) */}
       {Platform.OS === 'web' && (
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onWebFileChange} />
       )}
 
@@ -281,6 +281,7 @@ export default function ProfileScreen() {
               setEditorVisible(true);
             }}
           >
+            <Text style={styles.editButtonText}>Edit</Text>
             <Text style={[styles.editButtonText, styles.smallEditButtonText]}>Edit</Text>
           </TouchableOpacity>
         </View>
@@ -300,6 +301,7 @@ export default function ProfileScreen() {
               setEditorVisible(true);
             }}
           >
+            <Text style={styles.editButtonText}>Edit</Text>
             <Text style={[styles.editButtonText, styles.smallEditButtonText]}>Edit</Text>
           </TouchableOpacity>
         </View>
@@ -319,6 +321,7 @@ export default function ProfileScreen() {
               setEditorVisible(true);
             }}
           >
+            <Text style={styles.editButtonText}>Edit</Text>
             <Text style={[styles.editButtonText, styles.smallEditButtonText]}>Edit</Text>
           </TouchableOpacity>
         </View>
@@ -338,6 +341,7 @@ export default function ProfileScreen() {
               setEditorVisible(true);
             }}
           >
+            <Text style={styles.editButtonText}>Edit</Text>
             <Text style={[styles.editButtonText, styles.smallEditButtonText]}>Edit</Text>
           </TouchableOpacity>
         </View>
@@ -362,7 +366,7 @@ export default function ProfileScreen() {
           </Text>
         ) : userSkills.length === 0 ? (
           <Text style={[styles.sectionValue, { color: Colors[colorScheme ?? 'light'].text }]}>
-            You haven't posted any skills yet. Go to the home tab to add your first skill!
+            {`You haven\u2019t posted any skills yet. Go to the home tab to add your first skill!`}
           </Text>
         ) : (
           <FlatList
@@ -417,6 +421,7 @@ export default function ProfileScreen() {
       {/* Editor modal for sections */}
       <Modal visible={editorVisible} animationType="slide" onRequestClose={() => setEditorVisible(false)}>
         <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+          <Text style={[styles.name, { color: Colors[colorScheme ?? 'light'].text }]}>{editorField ? `Edit ${editorField}` : 'Edit'}</Text>
           <Text style={[styles.name, { color: Colors[colorScheme ?? 'light'].text }]}>{editorField ? `Edit ${fieldLabels[editorField] ?? editorField}` : 'Edit'}</Text>
           <TextInput
             style={[styles.editorInput, { color: Colors[colorScheme ?? 'light'].text }]}
@@ -449,10 +454,25 @@ export default function ProfileScreen() {
                 if (editorField === 'languages') updateData.languages = editorValue.split(',').map(s => s.trim()).filter(Boolean);
 
                 try {
-                  await usersService.updateUserProfile(user.id, updateData);
+                  // Merge existing stored user record with the new fields, then write using the available API
+                  const existing = await usersService.getUserById(user.id);
+                  const merged = {
+                    name: existing?.name ?? user.name ?? '',
+                    email: existing?.email ?? user.email ?? '',
+                    bio: updateData.bio ?? existing?.bio ?? '',
+                    skillsHave: updateData.skillsHave ?? existing?.skillsHave ?? [],
+                    skillsWant: updateData.skillsWant ?? existing?.skillsWant ?? [],
+                    languages: updateData.languages ?? existing?.languages ?? [],
+                    avatarUrl: existing?.avatarUrl ?? undefined,
+                    // Provide defaults for required fields expected by the User type
+                    location: existing?.location ?? '',
+                    credits: existing?.credits ?? 150,
+                  };
+                  // createUserWithId exists on usersService and will write the user document for the given id
+                  await usersService.createUserWithId(user.id, merged);
                   Alert.alert('Saved', 'Profile updated');
-                } catch (e) {
-                  console.error('Failed to update profile:', e);
+                } catch (err) {
+                  console.error('Failed to update profile:', err);
                   Alert.alert('Error', 'Failed to save changes');
                 } finally {
                   setEditorVisible(false);

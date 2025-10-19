@@ -15,6 +15,8 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarItemStyle: { flex: 1 },
+        tabBarStyle: { justifyContent: 'space-around' },
       }}>
       <Tabs.Screen
         name="map"
@@ -41,9 +43,11 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
+          // Hide the profile tab button; keep the route available programmatically
+          tabBarButton: () => null,
         }}
       />
+      {/* Users route removed to keep tab bar clean */}
     </Tabs>
   );
 }
