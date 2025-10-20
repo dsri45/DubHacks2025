@@ -19,7 +19,11 @@ import {
 
   Dimensions,
 
+  KeyboardAvoidingView,
+
   Modal,
+
+  Platform,
 
   SafeAreaView,
 
@@ -834,7 +838,12 @@ export default function HomeScreen() {
 
   return (
 
-    <SafeAreaView style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <SafeAreaView style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
 
       <View style={styles.header}>
 
@@ -1775,6 +1784,8 @@ export default function HomeScreen() {
       </Modal>
 
     </SafeAreaView>
+
+    </KeyboardAvoidingView>
 
   );
 

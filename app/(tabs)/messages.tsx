@@ -7,6 +7,8 @@ import {
     ActivityIndicator,
     Alert,
     FlatList,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -757,6 +759,11 @@ export default function CoursesScreen() {
 
   if (selectedCourse) {
     return (
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
       <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
         {/* Course Header */}
         <View style={[styles.courseHeader, { borderBottomColor: '#e0e0e0' }]}>
@@ -834,13 +841,19 @@ export default function CoursesScreen() {
             <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
             <Text style={styles.sendButtonText}>Send</Text>
           </TouchableOpacity>
-          </View>
         </View>
       </View>
+      </View>
+      </KeyboardAvoidingView>
     );
   }
 
   return (
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
     <View style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: Colors[colorScheme ?? 'light'].text }]}>
@@ -895,7 +908,7 @@ export default function CoursesScreen() {
               >
                 <Text style={styles.testButtonText}>Add Test Course (Debug)</Text>
               </TouchableOpacity>
-            </View>
+    </View>
           ) : (
             <FlatList
               data={enrollments}
@@ -954,6 +967,7 @@ export default function CoursesScreen() {
         </>
       )}
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
